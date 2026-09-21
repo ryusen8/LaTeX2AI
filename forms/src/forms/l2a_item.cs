@@ -173,6 +173,8 @@ namespace L2A.FORMS
             {
                 string source = textbox.Text;
                 decimal width = paragraph_width_.Value, font = paragraph_font_.Value;
+                bool autoWidth=auto_width_.Checked;
+                string alignment=new[]{"left","center","right","justify"}[paragraph_align_.SelectedIndex];
                 preparing_ = true;
                 preparation_cancel_ = new CancellationTokenSource();
                 var cancellation = preparation_cancel_.Token;
@@ -182,7 +184,7 @@ namespace L2A.FORMS
                 Action<string> progress = message => BeginInvoke((Action)(() => {
                     if (!cancellation.IsCancellationRequested) paragraph_help_.Text = message;
                 }));
-                Task.Factory.StartNew(() => L2A.UTIL.EditableParagraph.Prepare(source, width, font, cancellation, progress), cancellation).ContinueWith(task => {
+                Task.Factory.StartNew(() => L2A.UTIL.EditableParagraph.PrepareFlow(source, width, font, autoWidth, alignment, cancellation, progress), cancellation).ContinueWith(task => {
                     preparing_ = false;
                     bool cancelled = cancellation.IsCancellationRequested;
                     preparation_cancel_.Dispose(); preparation_cancel_ = null;
@@ -196,7 +198,7 @@ namespace L2A.FORMS
                     try {
                         string folder = task.Result;
                         return_parameter_list_.sub_lists_["latex"].main_option_ =
-                            L2A.UTIL.Paragraph.EncodePrepared(source, width, font, System.IO.Path.Combine(folder, "paragraph.pdf")) +
+                            L2A.UTIL.Paragraph.EncodePrepared(source, width*25.4m/72m, font, System.IO.Path.Combine(folder, "paragraph.pdf")) +
                             "\n%L2A-EDITABLE-JOB:" + System.IO.Path.GetFileName(folder) + "\n";
                         L2A.UTIL.EditableParagraph.Launch(folder);
                         form_result_ = "ok";
@@ -387,7 +389,7 @@ namespace L2A.FORMS
             // Set the latex text options.
             return_parameter_list_.sub_lists_["latex"] = new L2A.UTIL.ParameterList();
             return_parameter_list_.sub_lists_["latex"].main_option_ = paragraph_mode_.Checked ?
-                L2A.UTIL.Paragraph.Encode(textbox.Text, paragraph_width_.Value, paragraph_font_.Value) : textbox.Text;
+                L2A.UTIL.Paragraph.Encode(textbox.Text, paragraph_width_.Value*25.4m/72m, paragraph_font_.Value) : textbox.Text;
             return_parameter_list_.sub_lists_["latex"].options_["cursor_position"] = textbox.SelectionStart.ToString();
         }
 
@@ -396,6 +398,8 @@ namespace L2A.FORMS
 
         private CheckBox paragraph_mode_;
         private CheckBox editable_text_;
+        private CheckBox auto_width_;
+        private ComboBox paragraph_align_;
         private bool preparing_;
         private CancellationTokenSource preparation_cancel_;
         private static string WindowsLines(string text) { return text.Replace("\r\n", "\n").Replace('\r', '\n').Replace("\n", "\r\n"); }
@@ -425,11 +429,16 @@ namespace L2A.FORMS
             group_text.Text = "Text and formulas";
 
             paragraph_mode_ = new CheckBox { Name = "paragraph_mode", Text = "Paragraph + math", AutoSize = true, Location = new Point(10, 24) };
-            var widthLabel = new Label { Text = "Width (mm)", AutoSize = true, Location = new Point(180, 26) };
-            paragraph_width_ = new NumericUpDown { Name = "paragraph_width", AccessibleName = "Paragraph width in millimeters", Minimum = 10, Maximum = 400, DecimalPlaces = 1, Value = 90, Location = new Point(252, 22), Width = 64 };
+            var widthLabel = new Label { Text = "Width (pt)", AutoSize = true, Location = new Point(180, 26) };
+            paragraph_width_ = new NumericUpDown { Name = "paragraph_width", AccessibleName = "Paragraph width in points", Minimum = 30, Maximum = 1100, DecimalPlaces = 1, Value = 255, Location = new Point(252, 22), Width = 64 };
             var fontLabel = new Label { Text = "Font (pt)", AutoSize = true, Location = new Point(340, 26) };
             paragraph_font_ = new NumericUpDown { Name = "paragraph_font", AccessibleName = "Paragraph font size in points", Minimum = 6, Maximum = 72, DecimalPlaces = 1, Value = 11, Location = new Point(400, 22), Width = 64 };
-            editable_text_ = new CheckBox { Name = "editable_text", Text = "Editable AI text (Times New Roman)", AutoSize = true, Checked = true, Location = new Point(10, 54) };
+            editable_text_ = new CheckBox { Name = "editable_text", Text = "Flowing AI text + formulas", AutoSize = true, Checked = true, Location = new Point(10, 54) };
+            auto_width_=new CheckBox{Text="Auto width",Checked=true,AutoSize=true,Location=new Point(245,54)};
+            paragraph_align_=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,Location=new Point(375,51),Width=130,AccessibleName="Paragraph alignment"};
+            paragraph_align_.Items.AddRange(new object[]{"Left","Center","Right","Justify"});paragraph_align_.SelectedIndex=0;
+            auto_width_.CheckedChanged+=(s,e)=>UpdateParagraphHelp();
+            editable_text_.CheckedChanged+=(s,e)=>UpdateParagraphHelp();
             FormClosing += (sender, e) => {
                 if (preparing_) {
                     e.Cancel = true; preparation_cancel_.Cancel();
@@ -444,14 +453,14 @@ namespace L2A.FORMS
             textbox.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             textbox.AcceptsTab = true;
             paragraph_help_ = new Label { Location = new Point(10, group_text.ClientSize.Height - 53), Size = new Size(group_text.ClientSize.Width - 20, 46), Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right };
-            group_text.Controls.AddRange(new Control[] { paragraph_mode_, widthLabel, paragraph_width_, fontLabel, paragraph_font_, editable_text_, paragraph_help_ });
+            group_text.Controls.AddRange(new Control[] { paragraph_mode_, widthLabel, paragraph_width_, fontLabel, paragraph_font_, editable_text_,auto_width_,paragraph_align_, paragraph_help_ });
 
             string source;
             decimal width, font;
             if (L2A.UTIL.Paragraph.TryDecode(textbox.Text, out source, out width, out font))
             {
                 textbox.Text = WindowsLines(source);
-                paragraph_width_.Value = width;
+                paragraph_width_.Value = Math.Max(30,Math.Min(1100,width*72m/25.4m));
                 paragraph_font_.Value = font;
                 paragraph_mode_.Checked = true;
             }
@@ -472,13 +481,13 @@ namespace L2A.FORMS
                     if (L2A.UTIL.Paragraph.TryDecode(textbox.Text, out source, out width, out font))
                     {
                         textbox.Text = WindowsLines(source);
-                        paragraph_width_.Value = width;
+                        paragraph_width_.Value = Math.Max(30,Math.Min(1100,width*72m/25.4m));
                         paragraph_font_.Value = font;
                     }
                     original_size.Checked = true;
                     pos_0.Checked = true;
                 }
-                else textbox.Text = WindowsLines(L2A.UTIL.Paragraph.Encode(textbox.Text, paragraph_width_.Value, paragraph_font_.Value));
+                else textbox.Text = WindowsLines(L2A.UTIL.Paragraph.Encode(textbox.Text, paragraph_width_.Value*25.4m/72m, paragraph_font_.Value));
             }
             catch (FormatException error)
             {
@@ -490,9 +499,11 @@ namespace L2A.FORMS
 
         private void UpdateParagraphHelp()
         {
-            editable_text_.Enabled = paragraph_width_.Enabled = paragraph_font_.Enabled = paragraph_mode_.Checked;
+            editable_text_.Enabled = paragraph_font_.Enabled = paragraph_mode_.Checked;
+            auto_width_.Enabled=paragraph_align_.Enabled=paragraph_mode_.Checked&&editable_text_.Checked;
+            paragraph_width_.Enabled=paragraph_mode_.Checked&&!(editable_text_.Checked&&auto_width_.Checked);
             paragraph_help_.Text = paragraph_mode_.Checked ?
-                "English text + $inline math$ / $$display math$$. Enter: newline; Ctrl+Enter: insert.\nEditable AI text creates text runs and editable LaTeX2AI formulas. Edits do not reflow the layout." :
+                "Resize the text boundary; use AI Paragraph alignment and type size.\nFormulas follow after a pause. Auto width fits the artboard." :
                 "Raw LaTeX. Enter: insert; Shift+Enter: newline.\nEnable Paragraph + math to wrap pasted prose to a fixed width.";
         }
     }

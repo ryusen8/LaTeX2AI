@@ -78,6 +78,14 @@ namespace L2A.UTIL
         }
         public static string Prepare(string source, decimal width, decimal font, CancellationToken cancellation, Action<string> progress)
         {
+            return PrepareCore(source,width,font,cancellation,progress,false,false,"left");
+        }
+        public static string PrepareFlow(string source, decimal widthPt, decimal font, bool autoWidth, string align, CancellationToken cancellation, Action<string> progress)
+        {
+            return PrepareCore(source,widthPt*25.4m/72m,font,cancellation,progress,true,autoWidth,align);
+        }
+        private static string PrepareCore(string source, decimal width, decimal font, CancellationToken cancellation, Action<string> progress, bool flow, bool autoWidth, string align)
+        {
             cancellation.ThrowIfCancellationRequested();
             Paragraph.Encode(source, width, font);
             var segments = Paragraph.Parse(source);
@@ -85,14 +93,16 @@ namespace L2A.UTIL
             string folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LaTeX2AI", "paragraph-jobs", id);
             Directory.CreateDirectory(folder);
             File.WriteAllText(Path.Combine(folder, "source.txt"), source, Encoding.UTF8);
-            var data = new StringBuilder("var job={id:" + Quote(id) + ",done:" + Quote(Path.Combine(folder, "completed.txt").Replace('\\', '/')) + ",source:" + Quote(source) + ",width:" + Number(width * 72m / 25.4m) + ",font:" + Number(font) + ",segments:[");
+            var data = new StringBuilder("var job={id:" + Quote(id) + ",done:" + Quote(Path.Combine(folder, "completed.txt").Replace('\\', '/')) + ",source:" + Quote(source) + ",width:" + Number(width * 72m / 25.4m) + ",font:" + Number(font) + ",autoWidth:" + (autoWidth?"true":"false") + ",align:" + Quote(align) + ",segments:[");
             var settings = new XmlDocument();
             settings.Load(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Adobe\Illustrator\LaTeX2AI\LaTeX2AI_application_data.xml"));
             var root = settings.DocumentElement;
             string latex = ResolveCompiler(root.GetAttribute("path_latex"), root.GetAttribute("command_latex"));
             string gs = root.GetAttribute("command_gs");
             var unique = new HashSet<string>();
-            foreach (var s in segments) if (s.Kind == "math" || s.Kind == "display") unique.Add(s.Kind + ":" + s.Text);
+            int occurrences=0;
+            foreach (var s in segments) if (s.Kind == "math" || s.Kind == "display") {unique.Add(s.Kind + ":" + s.Text);occurrences++;}
+            if(flow && occurrences>100)throw new FormatException("Use at most 100 formula occurrences per flowing paragraph. Split longer paragraphs.");
             if (unique.Count > 100) throw new FormatException("Use at most 100 distinct formulas per paragraph.");
             var cache = new Dictionary<string, string>();
             var previewCache = new Dictionary<string, string>();
@@ -112,17 +122,17 @@ namespace L2A.UTIL
                 if (!cache.TryGetValue(key, out result)) {
                     if (progress != null) progress("Preparing formula " + (cache.Count + 1) + " of " + unique.Count + ". Cancel stops this insertion.");
                     string stem = "formula" + cache.Count;
-                    string tex = "\\documentclass[border=1pt]{standalone}\n\\usepackage{amsmath,amssymb}\n\\newwrite\\metrics\n\\begin{document}\n" +
+                    string tex = "\\RequirePackage{fix-cm}\n\\documentclass[border=1pt]{standalone}\n\\usepackage{amsmath,amssymb}\n\\newwrite\\metrics\n\\begin{document}\n" +
                         "\\fontsize{" + Number(font * 72.27m / 72m) + "}{" + Number(font * 1.25m) + "}\\selectfont%\n" +
                         "\\setbox0=\\hbox{$" + (segment.Kind == "display" ? "\\displaystyle " : "") + segment.Text + "\n$}%\n" +
-                        "\\immediate\\openout\\metrics=" + stem + ".metrics%\n\\immediate\\write\\metrics{\\the\\wd0,\\the\\ht0,\\the\\dp0}%\n\\immediate\\closeout\\metrics%\n\\box0%\n\\end{document}\n";
+                        "\\setbox1=\\hbox{$H$}%\n\\immediate\\openout\\metrics=" + stem + ".metrics%\n\\immediate\\write\\metrics{\\the\\wd0,\\the\\ht0,\\the\\dp0,\\the\\ht1}%\n\\immediate\\closeout\\metrics%\n\\box0%\n\\end{document}\n";
                     File.WriteAllText(Path.Combine(folder, stem + ".tex"), tex, new UTF8Encoding(false));
                     Run(latex, "-interaction=nonstopmode -halt-on-error -no-shell-escape " + stem + ".tex", folder, stem + "-latex.log", cancellation);
                     Run(gs, "-q -dBATCH -dNOPAUSE -dSAFER -sDEVICE=pdfwrite -sOutputFile=" + stem + "-linked.pdf " + stem + ".pdf", folder, stem + "-gs.log", cancellation);
                     string[] metrics = File.ReadAllText(Path.Combine(folder, stem + ".metrics")).Trim().Split(',');
-                    if (metrics.Length != 3) throw new FormatException("Unexpected formula dimensions.");
+                    if (metrics.Length != 4) throw new FormatException("Unexpected formula dimensions.");
                     decimal w = Dimension(metrics[0]), h = Dimension(metrics[1]), d = Dimension(metrics[2]);
-                    if (w > width * 72m / 25.4m) throw new FormatException("A formula is wider than the paragraph. Increase Width (mm) or reduce Font (pt).");
+                    if (!flow && w > width * 72m / 25.4m) throw new FormatException("A formula is wider than the paragraph. Increase the width or reduce Font (pt).");
                     // Preserve the native v0.0.10 PDF payload and placement schema.
                     string formulaCode = "{\\fontsize{" + Number(font * 72.27m / 72m) + "}{" + Number(font * 1.25m) +
                         "}\\selectfont $" + (segment.Kind == "display" ? "\\displaystyle " : "") + segment.Text + "\n$}";
@@ -130,6 +140,7 @@ namespace L2A.UTIL
                     string pdfHash = NativeHash(Convert.ToBase64String(pdfBytes));
                     string note = CreateFormulaNote(formulaCode, pdfBytes);
                     result = "{kind:" + Quote(segment.Kind) + ",text:" + Quote(segment.Text) + ",note:" + Quote(note) + ",hash:" + Quote(pdfHash) + ",file:" + Quote(Path.Combine(folder, stem + "-linked.pdf").Replace('\\', '/')) + ",w:" + Number(w) + ",h:" + Number(h) + ",d:" + Number(d) + "}";
+                    result=result.Substring(0,result.Length-1)+",cap:"+Number(Dimension(metrics[3]))+"}";
                     cache.Add(key, result);
                     previewCache.Add(key, "\\raisebox{-" + Number(d) + "bp}{\\includegraphics[trim=1pt 1pt 1pt 1pt,clip]{" + stem + "-linked.pdf}}");
                 }
@@ -146,7 +157,8 @@ namespace L2A.UTIL
             Run(latex, "-interaction=nonstopmode -halt-on-error -no-shell-escape paragraph.tex", folder, "paragraph-latex.log", cancellation);
             cancellation.ThrowIfCancellationRequested();
             data.Append("]};\n");
-            using (var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("L2A.EditableParagraph.jsx"))
+            if(flow)data.Append(Resource("L2A.FlowLayout.jsx"));
+            using (var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(flow?"L2A.FlowInsert.jsx":"L2A.EditableParagraph.jsx"))
             using (var reader = new StreamReader(stream)) data.Append(reader.ReadToEnd());
             File.WriteAllText(Path.Combine(folder, "insert.jsx"), data.ToString(), new UTF8Encoding(false));
             return folder;
@@ -218,6 +230,45 @@ namespace L2A.UTIL
             IntPtr threadSecurity, bool inheritHandles, uint flags, IntPtr environment, string directory,
             ref StartupInfo startup, out ProcessInfo process);
         [DllImport("kernel32.dll")] private static extern bool CloseHandle(IntPtr handle);
+        private static string Resource(string name) {
+            using(var stream=Assembly.GetExecutingAssembly().GetManifestResourceStream(name))
+            using(var reader=new StreamReader(stream)) return reader.ReadToEnd();
+        }
+        public static void LaunchFlowMonitor() {
+            var command=new StringBuilder("\""+Application.ExecutablePath+"\" --flow-watch "+Process.GetCurrentProcess().Id);
+            var startup=new StartupInfo();startup.cb=Marshal.SizeOf(startup);ProcessInfo process;
+            if(!CreateProcess(Application.ExecutablePath,command,IntPtr.Zero,IntPtr.Zero,false,0x08000000,IntPtr.Zero,null,ref startup,out process))
+                throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+            CloseHandle(process.process);CloseHandle(process.thread);
+        }
+        public static void WatchFlow(int parentId) {
+            try { using(var parent=Process.GetProcessById(parentId)) if(!parent.WaitForExit(120000))return; }catch(ArgumentException){}
+            bool created;
+            using(var mutex=new Mutex(true,@"Local\LaTeX2AI.FlowLayout",out created)) {
+                if(!created)return;
+                string script=Resource("L2A.FlowLayout.jsx")+"\ntry { l2aFlowTick(); } catch(e) { 'ERROR:'+e.message+' line '+e.line; }";
+                string lastError="";
+                while(IllustratorRunning()) {
+                    object app=null;
+                    try {
+                        app=Marshal.GetActiveObject("Illustrator.Application");
+                        string result=Convert.ToString(app.GetType().InvokeMember("DoJavaScript",BindingFlags.InvokeMethod,null,app,new object[]{script}));
+                        if(result.StartsWith("ERROR:")&&result!=lastError) {
+                            string dir=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"LaTeX2AI");Directory.CreateDirectory(dir);
+                            File.AppendAllText(Path.Combine(dir,"flow-layout.log"),DateTime.Now.ToString("s")+" "+result+Environment.NewLine);lastError=result;
+                        }
+                    } catch(COMException){} catch(TargetInvocationException){} catch(IOException){} catch(UnauthorizedAccessException){}
+                    finally{if(app!=null&&Marshal.IsComObject(app))Marshal.ReleaseComObject(app);}
+                    Thread.Sleep(700);
+                }
+            }
+        }
+        private static bool IllustratorRunning() {
+            var processes=Process.GetProcessesByName("Illustrator");
+            bool running=processes.Length>0;
+            foreach(var process in processes)process.Dispose();
+            return running;
+        }
         public static void Launch(string folder)
         {
             // Never inherit the native plugin's stdout pipe: Illustrator reads that
@@ -245,6 +296,7 @@ namespace L2A.UTIL
                         if (result == "WAIT") { Thread.Sleep(500); continue; }
                         File.WriteAllText(Path.Combine(folder, "result.txt"), result);
                         if (!result.StartsWith("OK:", StringComparison.Ordinal)) throw new InvalidOperationException(result);
+                        LaunchFlowMonitor();
                         return;
                     }
                     catch (COMException error) {

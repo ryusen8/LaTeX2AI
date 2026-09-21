@@ -43,6 +43,9 @@ namespace L2A
 
             // Check if correct number of arguments are given.
             string[] arguments = Environment.GetCommandLineArgs();
+            if(arguments.Length==3 && arguments[1]=="--flow-watch") {
+                L2A.UTIL.EditableParagraph.WatchFlow(Int32.Parse(arguments[2])); return;
+            }
             if (arguments.Length == 4 && arguments[1] == "--editable-job")
             {
                 L2A.UTIL.EditableParagraph.Worker(arguments[2], Int32.Parse(arguments[3]));
@@ -99,6 +102,7 @@ namespace L2A
             else if (arguments[1] == "l2a_check_forms")
             {
                 CheckForms(return_path);
+                L2A.UTIL.EditableParagraph.LaunchFlowMonitor();
             }
             else L2A.ERR.ExceptionClass.Exception("The form type \"" + arguments[1] + "\" is not defiend.");
         }

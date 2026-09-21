@@ -103,9 +103,11 @@
     <Compile Include="src\utlility\parameter_list.cs" />
     <Compile Include="src\utlility\paragraph.cs" />
     <Compile Include="src\utlility\editable_paragraph.cs" />
-    <EmbeddedResource Include="src\utlility\editable_paragraph.jsx">
-      <LogicalName>L2A.EditableParagraph.jsx</LogicalName>
-    </EmbeddedResource>
+      <EmbeddedResource Include="src\utlility\editable_paragraph.jsx">
+        <LogicalName>L2A.EditableParagraph.jsx</LogicalName>
+      </EmbeddedResource>
+      <EmbeddedResource Include="src\utlility\flow_layout.jsx"><LogicalName>L2A.FlowLayout.jsx</LogicalName></EmbeddedResource>
+      <EmbeddedResource Include="src\utlility\flow_insert.jsx"><LogicalName>L2A.FlowInsert.jsx</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="Properties\Resources.resx">
       <Generator>ResXFileCodeGenerator</Generator>
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>

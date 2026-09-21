@@ -33,6 +33,20 @@ namespace L2A.UTIL
     public static class Paragraph
     {
         private const string Marker = "%L2A-PARAGRAPH-V1:";
+        private const string PreparedMarker = "%L2A-PREPARED-PDF:";
+
+        public static string EncodePrepared(string text, decimal widthMm, decimal fontPt, string pdfPath)
+        {
+            string encoded = Encode(text, widthMm, fontPt);
+            string path = pdfPath.Replace('\\', '/');
+            if (path.IndexOfAny(new char[] { '{', '}', '%', '\r', '\n' }) >= 0)
+                throw new FormatException("Unsupported character in the paragraph cache path.");
+            // The native plugin uses the already-validated PDF rather than compiling
+            // the source again with a different document header on its UI thread.
+            return encoded.Substring(0, encoded.IndexOf('\n')) + "\n" + PreparedMarker +
+                Convert.ToBase64String(Encoding.UTF8.GetBytes(path)) + "\n" +
+                "\\includegraphics{\\detokenize{" + path + "}}";
+        }
 
         public static string Encode(string text, decimal widthMm, decimal fontPt)
         {
@@ -72,6 +86,14 @@ namespace L2A.UTIL
                 string source = new UTF8Encoding(false, true).GetString(Convert.FromBase64String(fields[2]));
                 // Do not silently discard edits made to the generated code in raw mode.
                 string expected = Encode(source, width, font);
+                int prepared = newline + 1;
+                if (latex.Substring(prepared).StartsWith(PreparedMarker, StringComparison.Ordinal)) {
+                    int end = latex.IndexOf('\n', prepared);
+                    if (end < 0) return false;
+                    string path = new UTF8Encoding(false, true).GetString(Convert.FromBase64String(
+                        latex.Substring(prepared + PreparedMarker.Length, end - prepared - PreparedMarker.Length)));
+                    expected = EncodePrepared(source, width, font, path);
+                }
                 if (expected != latex.Replace("\r\n", "\n")) return false;
                 text = source; widthMm = width; fontPt = font;
                 return true;
@@ -200,6 +222,13 @@ namespace L2A.UTIL
             }
             if (prose.Length > 0) segments.Add(new Segment("text", prose.ToString()));
             return segments;
+        }
+
+        public static string EscapeText(string text)
+        {
+            var result = new StringBuilder();
+            foreach (char c in text) AppendText(result, c);
+            return result.ToString();
         }
 
         private static void AppendText(StringBuilder result, char c)

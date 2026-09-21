@@ -30,6 +30,7 @@ using System.Drawing;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Threading;
 using System.Windows.Forms;
 
 namespace L2A.FORMS
@@ -53,6 +54,7 @@ namespace L2A.FORMS
             textbox.Text = property_list.sub_lists_["latex"].main_option_;
 
             InitializeParagraphControls();
+            textbox.Text = WindowsLines(textbox.Text);
 
             // Set the position of the cursor in the text box.
             int cursor_position = Int32.Parse(property_list.sub_lists_["latex"].options_["cursor_position"]);
@@ -159,6 +161,7 @@ namespace L2A.FORMS
 
         private void OkClick(object sender, EventArgs e)
         {
+            if (preparing_) return;
             try { this.StoreValues(); }
             catch (FormatException error)
             {
@@ -170,18 +173,32 @@ namespace L2A.FORMS
             {
                 string source = textbox.Text;
                 decimal width = paragraph_width_.Value, font = paragraph_font_.Value;
-                preparing_ = true; Enabled = false; UseWaitCursor = true;
+                preparing_ = true;
+                preparation_cancel_ = new CancellationTokenSource();
+                var cancellation = preparation_cancel_.Token;
+                SetPreparationControls(false);
                 paragraph_help_.Text = "Preparing editable text and LaTeX2AI formulas...";
-                Task.Factory.StartNew(() => L2A.UTIL.EditableParagraph.Prepare(source, width, font)).ContinueWith(task => {
-                    preparing_ = false; Enabled = true; UseWaitCursor = false; UpdateParagraphHelp();
+                // Keep Cancel, Escape and the message loop alive during compilation.
+                Action<string> progress = message => BeginInvoke((Action)(() => {
+                    if (!cancellation.IsCancellationRequested) paragraph_help_.Text = message;
+                }));
+                Task.Factory.StartNew(() => L2A.UTIL.EditableParagraph.Prepare(source, width, font, cancellation, progress), cancellation).ContinueWith(task => {
+                    preparing_ = false;
+                    bool cancelled = cancellation.IsCancellationRequested;
+                    preparation_cancel_.Dispose(); preparation_cancel_ = null;
+                    SetPreparationControls(true);
+                    UpdateParagraphHelp();
+                    if (cancelled || task.IsCanceled) { Close(); return; }
                     if (task.IsFaulted) {
                         MessageBox.Show(this, task.Exception.GetBaseException().Message, "Check paragraph", MessageBoxButtons.OK, MessageBoxIcon.Information);
                         return;
                     }
                     try {
                         string folder = task.Result;
+                        return_parameter_list_.sub_lists_["latex"].main_option_ =
+                            L2A.UTIL.Paragraph.EncodePrepared(source, width, font, System.IO.Path.Combine(folder, "paragraph.pdf")) +
+                            "\n%L2A-EDITABLE-JOB:" + System.IO.Path.GetFileName(folder) + "\n";
                         L2A.UTIL.EditableParagraph.Launch(folder);
-                        return_parameter_list_.sub_lists_["latex"].main_option_ += "\n%L2A-EDITABLE-JOB:" + System.IO.Path.GetFileName(folder) + "\n";
                         form_result_ = "ok";
                         Close();
                     } catch (Exception error) {
@@ -380,6 +397,13 @@ namespace L2A.FORMS
         private CheckBox paragraph_mode_;
         private CheckBox editable_text_;
         private bool preparing_;
+        private CancellationTokenSource preparation_cancel_;
+        private static string WindowsLines(string text) { return text.Replace("\r\n", "\n").Replace('\r', '\n').Replace("\n", "\r\n"); }
+        private void SetPreparationControls(bool enabled)
+        {
+            button_ok.Enabled = group_placement.Enabled = group_type.Enabled = group_boundary_box.Enabled = group_latex.Enabled = enabled;
+            foreach (Control control in group_text.Controls) if (control != paragraph_help_) control.Enabled = enabled;
+        }
         private NumericUpDown paragraph_width_;
         private NumericUpDown paragraph_font_;
         private Label paragraph_help_;
@@ -394,6 +418,7 @@ namespace L2A.FORMS
             MaximizeBox = true;
             button_ok.Left = ClientSize.Width - button_ok.Width - 12;
             button_cancel.Left = button_ok.Left;
+            CancelButton = button_cancel;
             button_ok.Anchor = button_cancel.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             group_text.Size = new Size(ClientSize.Width - group_text.Left - 12, ClientSize.Height - group_text.Top - 12);
             group_text.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
@@ -405,7 +430,12 @@ namespace L2A.FORMS
             var fontLabel = new Label { Text = "Font (pt)", AutoSize = true, Location = new Point(340, 26) };
             paragraph_font_ = new NumericUpDown { Name = "paragraph_font", AccessibleName = "Paragraph font size in points", Minimum = 6, Maximum = 72, DecimalPlaces = 1, Value = 11, Location = new Point(400, 22), Width = 64 };
             editable_text_ = new CheckBox { Name = "editable_text", Text = "Editable AI text (Times New Roman)", AutoSize = true, Checked = true, Location = new Point(10, 54) };
-            FormClosing += (sender, e) => { if (preparing_) e.Cancel = true; };
+            FormClosing += (sender, e) => {
+                if (preparing_) {
+                    e.Cancel = true; preparation_cancel_.Cancel();
+                    paragraph_help_.Text = "Cancelling compilation...";
+                }
+            };
             paragraph_width_.Left = widthLabel.Right + 12;
             fontLabel.Left = paragraph_width_.Right + 24;
             paragraph_font_.Left = fontLabel.Right + 12;
@@ -413,7 +443,6 @@ namespace L2A.FORMS
             textbox.Size = new Size(group_text.ClientSize.Width - 20, group_text.ClientSize.Height - 147);
             textbox.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             textbox.AcceptsTab = true;
-            textbox.DetectUrls = false;
             paragraph_help_ = new Label { Location = new Point(10, group_text.ClientSize.Height - 53), Size = new Size(group_text.ClientSize.Width - 20, 46), Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right };
             group_text.Controls.AddRange(new Control[] { paragraph_mode_, widthLabel, paragraph_width_, fontLabel, paragraph_font_, editable_text_, paragraph_help_ });
 
@@ -421,7 +450,7 @@ namespace L2A.FORMS
             decimal width, font;
             if (L2A.UTIL.Paragraph.TryDecode(textbox.Text, out source, out width, out font))
             {
-                textbox.Text = source;
+                textbox.Text = WindowsLines(source);
                 paragraph_width_.Value = width;
                 paragraph_font_.Value = font;
                 paragraph_mode_.Checked = true;
@@ -442,14 +471,14 @@ namespace L2A.FORMS
                     decimal width, font;
                     if (L2A.UTIL.Paragraph.TryDecode(textbox.Text, out source, out width, out font))
                     {
-                        textbox.Text = source;
+                        textbox.Text = WindowsLines(source);
                         paragraph_width_.Value = width;
                         paragraph_font_.Value = font;
                     }
                     original_size.Checked = true;
                     pos_0.Checked = true;
                 }
-                else textbox.Text = L2A.UTIL.Paragraph.Encode(textbox.Text, paragraph_width_.Value, paragraph_font_.Value);
+                else textbox.Text = WindowsLines(L2A.UTIL.Paragraph.Encode(textbox.Text, paragraph_width_.Value, paragraph_font_.Value));
             }
             catch (FormatException error)
             {

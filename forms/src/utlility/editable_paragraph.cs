@@ -53,6 +53,11 @@ namespace L2A.UTIL
         private static string Number(decimal value) { return value.ToString(CultureInfo.InvariantCulture); }
         public static string Prepare(string source, decimal width, decimal font)
         {
+            return Prepare(source, width, font, CancellationToken.None, null);
+        }
+        public static string Prepare(string source, decimal width, decimal font, CancellationToken cancellation, Action<string> progress)
+        {
+            cancellation.ThrowIfCancellationRequested();
             Paragraph.Encode(source, width, font);
             var segments = Paragraph.Parse(source);
             string id = Guid.NewGuid().ToString("N");
@@ -60,35 +65,39 @@ namespace L2A.UTIL
             Directory.CreateDirectory(folder);
             File.WriteAllText(Path.Combine(folder, "source.txt"), source, Encoding.UTF8);
             var data = new StringBuilder("var job={id:" + Quote(id) + ",done:" + Quote(Path.Combine(folder, "completed.txt").Replace('\\', '/')) + ",source:" + Quote(source) + ",width:" + Number(width * 72m / 25.4m) + ",font:" + Number(font) + ",segments:[");
-            string latex = null, gs = null;
+            var settings = new XmlDocument();
+            settings.Load(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Adobe\Illustrator\LaTeX2AI\LaTeX2AI_application_data.xml"));
+            var root = settings.DocumentElement;
+            string latex = Path.Combine(root.GetAttribute("path_latex"), root.GetAttribute("command_latex") + ".exe");
+            string gs = root.GetAttribute("command_gs");
+            var unique = new HashSet<string>();
+            foreach (var s in segments) if (s.Kind == "math" || s.Kind == "display") unique.Add(s.Kind + ":" + s.Text);
+            if (unique.Count > 100) throw new FormatException("Use at most 100 distinct formulas per paragraph.");
             var cache = new Dictionary<string, string>();
+            var previewCache = new Dictionary<string, string>();
+            var preview = new StringBuilder();
             int count = 0;
             foreach (var segment in segments)
             {
+                cancellation.ThrowIfCancellationRequested();
                 if (count++ > 0) data.Append(',');
                 if (segment.Kind == "text" || segment.Kind == "break") {
                     data.Append("{kind:").Append(Quote(segment.Kind)).Append(",text:").Append(Quote(segment.Text)).Append('}');
+                    preview.Append(segment.Kind == "break" ? "\n\\par\n" : Paragraph.EscapeText(segment.Text));
                     continue;
                 }
                 string key = segment.Kind + ":" + segment.Text;
                 string result;
                 if (!cache.TryGetValue(key, out result)) {
-                    if (cache.Count >= 100) throw new FormatException("Use at most 100 distinct formulas per paragraph.");
-                    if (latex == null) {
-                        var settings = new XmlDocument();
-                        settings.Load(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Adobe\Illustrator\LaTeX2AI\LaTeX2AI_application_data.xml"));
-                        var root = settings.DocumentElement;
-                        latex = Path.Combine(root.GetAttribute("path_latex"), root.GetAttribute("command_latex") + ".exe");
-                        gs = root.GetAttribute("command_gs");
-                    }
+                    if (progress != null) progress("Preparing formula " + (cache.Count + 1) + " of " + unique.Count + ". Cancel stops this insertion.");
                     string stem = "formula" + cache.Count;
                     string tex = "\\documentclass[border=1pt]{standalone}\n\\usepackage{amsmath,amssymb}\n\\newwrite\\metrics\n\\begin{document}\n" +
                         "\\fontsize{" + Number(font * 72.27m / 72m) + "}{" + Number(font * 1.25m) + "}\\selectfont%\n" +
                         "\\setbox0=\\hbox{$" + (segment.Kind == "display" ? "\\displaystyle " : "") + segment.Text + "\n$}%\n" +
                         "\\immediate\\openout\\metrics=" + stem + ".metrics%\n\\immediate\\write\\metrics{\\the\\wd0,\\the\\ht0,\\the\\dp0}%\n\\immediate\\closeout\\metrics%\n\\box0%\n\\end{document}\n";
                     File.WriteAllText(Path.Combine(folder, stem + ".tex"), tex, new UTF8Encoding(false));
-                    Run(latex, "-interaction=nonstopmode -halt-on-error -no-shell-escape " + stem + ".tex", folder, stem + "-latex.log");
-                    Run(gs, "-q -dBATCH -dNOPAUSE -dSAFER -sDEVICE=pdfwrite -sOutputFile=" + stem + "-linked.pdf " + stem + ".pdf", folder, stem + "-gs.log");
+                    Run(latex, "-interaction=nonstopmode -halt-on-error -no-shell-escape " + stem + ".tex", folder, stem + "-latex.log", cancellation);
+                    Run(gs, "-q -dBATCH -dNOPAUSE -dSAFER -sDEVICE=pdfwrite -sOutputFile=" + stem + "-linked.pdf " + stem + ".pdf", folder, stem + "-gs.log", cancellation);
                     string[] metrics = File.ReadAllText(Path.Combine(folder, stem + ".metrics")).Trim().Split(',');
                     if (metrics.Length != 3) throw new FormatException("Unexpected formula dimensions.");
                     decimal w = Dimension(metrics[0]), h = Dimension(metrics[1]), d = Dimension(metrics[2]);
@@ -101,9 +110,20 @@ namespace L2A.UTIL
                     string note = CreateFormulaNote(formulaCode, pdfBytes);
                     result = "{kind:" + Quote(segment.Kind) + ",text:" + Quote(segment.Text) + ",note:" + Quote(note) + ",hash:" + Quote(pdfHash) + ",file:" + Quote(Path.Combine(folder, stem + "-linked.pdf").Replace('\\', '/')) + ",w:" + Number(w) + ",h:" + Number(h) + ",d:" + Number(d) + "}";
                     cache.Add(key, result);
+                    previewCache.Add(key, "\\raisebox{-" + Number(d) + "bp}{\\includegraphics[trim=1pt 1pt 1pt 1pt,clip]{" + stem + "-linked.pdf}}");
                 }
                 data.Append(result);
+                if (segment.Kind == "display") preview.Append("\n\\par\\begin{center}").Append(previewCache[key]).Append("\\end{center}\n");
+                else preview.Append(previewCache[key]);
             }
+            if (progress != null) progress("Preparing paragraph preview. Cancel stops this insertion.");
+            File.WriteAllText(Path.Combine(folder, "paragraph.tex"),
+                "\\documentclass[border=1pt]{standalone}\n\\usepackage[utf8]{inputenc}\n\\usepackage[T1]{fontenc}\n" +
+                "\\usepackage{graphicx}\n\\begin{document}\n\\begin{minipage}{" + Number(width) + "mm}\n" +
+                "\\raggedright\\setlength{\\parindent}{0pt}\\fontsize{" + Number(font) + "}{" + Number(font * 1.25m) + "}\\selectfont\n" +
+                preview + "\n\\end{minipage}\n\\end{document}\n", new UTF8Encoding(false));
+            Run(latex, "-interaction=nonstopmode -halt-on-error -no-shell-escape paragraph.tex", folder, "paragraph-latex.log", cancellation);
+            cancellation.ThrowIfCancellationRequested();
             data.Append("]};\n");
             using (var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("L2A.EditableParagraph.jsx"))
             using (var reader = new StreamReader(stream)) data.Append(reader.ReadToEnd());
@@ -140,17 +160,26 @@ namespace L2A.UTIL
         private static decimal Dimension(string text) {
             return Decimal.Parse(text.Trim().Replace("pt", ""), CultureInfo.InvariantCulture) * 72m / 72.27m;
         }
-        private static void Run(string executable, string arguments, string folder, string log)
+        private static void Run(string executable, string arguments, string folder, string log, CancellationToken cancellation)
         {
             var start = new ProcessStartInfo(executable, arguments) { WorkingDirectory = folder, UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
             var output = new StringBuilder();
             using (var p = new Process { StartInfo = start }) {
                 p.OutputDataReceived += (s, e) => { if (e.Data != null) lock (output) output.AppendLine(e.Data); };
                 p.ErrorDataReceived += (s, e) => { if (e.Data != null) lock (output) output.AppendLine(e.Data); };
+                cancellation.ThrowIfCancellationRequested();
                 p.Start(); p.BeginOutputReadLine(); p.BeginErrorReadLine();
-                if (!p.WaitForExit(90000)) { p.Kill(); throw new FormatException("Formula compilation timed out. Check the LaTeX installation."); }
+                var watch = Stopwatch.StartNew();
+                while (!p.WaitForExit(100)) {
+                    if (cancellation.IsCancellationRequested || watch.ElapsedMilliseconds >= 90000) {
+                        try { p.Kill(); } catch (InvalidOperationException) { }
+                        cancellation.ThrowIfCancellationRequested();
+                        throw new FormatException("Formula compilation timed out. Check the LaTeX installation.");
+                    }
+                }
                 p.WaitForExit();
                 File.WriteAllText(Path.Combine(folder, log), output.ToString());
+                cancellation.ThrowIfCancellationRequested();
                 if (p.ExitCode != 0) throw new FormatException("Formula compilation failed. Check the formula syntax. Details: " + Path.Combine(folder, log));
             }
         }
@@ -207,11 +236,11 @@ namespace L2A.UTIL
                     finally { if (app != null && Marshal.IsComObject(app)) Marshal.ReleaseComObject(app); }
                     Thread.Sleep(500);
                 }
-                throw new TimeoutException("The paragraph was not found. The original LaTeX2AI object has been kept.");
+                throw new TimeoutException("Illustrator did not create the paragraph placeholder. Check any native plugin error or cancellation.");
             }
             catch (Exception error) {
                 File.WriteAllText(Path.Combine(folder, "error.txt"), error.ToString());
-                MessageBox.Show("Could not create editable text. Your original paragraph is kept.\n\n" + error.Message + "\n\nDetails: " + folder, "LaTeX2AI editable paragraph", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show("Could not finish the editable paragraph. Any existing placeholder was left unchanged. Your pasted source is saved in source.txt.\n\n" + error.Message + "\n\nDetails: " + folder, "LaTeX2AI editable paragraph", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
     }

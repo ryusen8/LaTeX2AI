@@ -16,6 +16,20 @@ joined as spaces. Write `\$` for a literal dollar sign. Plain prose such as
 `5%`, `A & B` and `sample_1` needs no LaTeX escaping. Formula contents are LaTeX.
 English/Latin prose and common typographic punctuation are supported.
 
+The input is a **plain-text** multiline control. Pasting formatted content from
+notes or browsers does not invoke RichEdit's rich-text/OLE import callbacks. This
+fixes a captured hang where the forms UI thread stayed in the RichTextBox COM
+callback while Illustrator synchronously waited for the form process to exit.
+Preparation displays the current formula count. **Cancel**, **Escape**, or closing
+the dialog stops preparation and terminates the active compiler process before
+returning a normal cancellation to Illustrator. Illustrator itself still uses
+the original synchronous native dialog protocol.
+
+Formula source is preserved literally. Markdown-export escapes such as `p\_i`
+and `\\|v\\|` are not automatically changed to `p_i` and `\|v\|`; correct these in
+the source if subscripts and norm symbols were intended. References to equation
+numbers in another document are not resolved by this standalone converter.
+
 Example:
 
 ```text
@@ -56,6 +70,9 @@ Ghostscript executables configured in LaTeX2AI Options. Custom document-header
 macros are not imported into this mode. A formula or unbroken word wider than
 the chosen width produces an error: increase the width or reduce the font size.
 Up to 100 distinct formulas can be compiled in one conversion.
+When recompiling individual formulas later through the native plugin, its
+document header must load any required packages, for example `amssymb` for
+`\mathbb`. Initial paragraph conversion does not depend on that header for math.
 
 Uncheck **Editable AI text** to keep a whole paragraph as one conventional
 LaTeX2AI linked PDF. That mode supports reopening its source and changing the
@@ -67,7 +84,10 @@ not silently discarded when switching back.
 
 Formula compilation runs before the form is submitted. Invalid delimiters or
 compile failures keep the dialog open. In editable mode the native plugin first
-places a normal paragraph. A separate worker then finds **only** the object
+places a preview built from the already compiled formula PDFs and escaped prose.
+It no longer recompiles all pasted math under the document's potentially different
+header. The wrapper stores the exact input/layout metadata and includes the
+precompiled preview PDF. A separate worker then finds **only** the object
 containing that job's unique marker, constructs the editable group, and removes
 the temporary paragraph after construction succeeds. Failure before commit
 leaves the normal paragraph intact and removes partial editable artwork.
@@ -106,6 +126,15 @@ fixtures cover display/inline math, punctuation, escaping, comments, invalid
 input, widths, decimal locales and CRLF round trips. The local build resolves
 .NET references from the installed runtime because the .NET 4 targeting pack
 is absent (MSB3644); the resulting executable was exercised in the host.
+
+The paste-hang regression adds 28 parser/metadata assertions, cancellation of an
+actively running child compiler, and a plain-text-control check. The reported
+paragraph compiles in about eight seconds locally. Its prepared PDF wrapper also
+compiles with the upstream `amsmath`-only header. Host-script insertion, save and
+reopen produced 21 native text frames and 14 linked LaTeX2AI formulas. The new
+input dialog accepted the complete pasted text and displayed compilation progress.
+An independent native default-header dialog prevented completing that particular
+end-to-end UI insertion run; it is not counted as a successful UI insertion test.
 
 Close any LaTeX2AI dialog before replacing `LaTeX2AIForms.exe` beside the installed
 `LaTeX2AI.aip`. Preserve the compatibility-patched native plugin. The old forms

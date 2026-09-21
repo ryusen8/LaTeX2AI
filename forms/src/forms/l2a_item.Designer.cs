@@ -69,7 +69,7 @@ namespace L2A.FORMS
             this.pos_5 = new System.Windows.Forms.RadioButton();
             this.pictureBox1 = new System.Windows.Forms.PictureBox();
             this.group_text = new System.Windows.Forms.GroupBox();
-            this.textbox = new System.Windows.Forms.RichTextBox();
+            this.textbox = new System.Windows.Forms.TextBox();
             this.clip_check_box = new System.Windows.Forms.CheckBox();
             this.original_size = new System.Windows.Forms.RadioButton();
             this.strech = new System.Windows.Forms.RadioButton();
@@ -275,6 +275,10 @@ namespace L2A.FORMS
             this.textbox.Font = new System.Drawing.Font("Courier New", 9.75F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.textbox.Location = new System.Drawing.Point(6, 19);
             this.textbox.Name = "textbox";
+            this.textbox.Multiline = true;
+            this.textbox.AcceptsReturn = true;
+            this.textbox.ScrollBars = System.Windows.Forms.ScrollBars.Vertical;
+            this.textbox.MaxLength = 100000;
             this.textbox.Size = new System.Drawing.Size(532, 122);
             this.textbox.TabIndex = 2;
             this.textbox.Text = "";
@@ -426,7 +430,7 @@ namespace L2A.FORMS
         private System.Windows.Forms.RadioButton pos_5;
         private System.Windows.Forms.PictureBox pictureBox1;
         private System.Windows.Forms.GroupBox group_text;
-        private System.Windows.Forms.RichTextBox textbox;
+        private System.Windows.Forms.TextBox textbox;
         private System.Windows.Forms.CheckBox clip_check_box;
         private System.Windows.Forms.RadioButton original_size;
         private System.Windows.Forms.RadioButton strech;

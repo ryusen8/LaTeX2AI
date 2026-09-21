@@ -62,6 +62,12 @@ internal static class ParagraphTests
                 "Editing must recover the exact pasted text and layout");
             Check(Paragraph.TryDecode(encoded.Replace("\n", "\r\n"), out source, out width, out font), "Windows line endings must round-trip");
             Check(!Paragraph.TryDecode(encoded + "manual edit", out source, out width, out font), "Manual edits must not be discarded");
+            string prepared = Paragraph.EncodePrepared(mixed, 85.5m, 12, @"C:\cache with spaces\paragraph.pdf");
+            Check(Paragraph.TryDecode(prepared + "\n%L2A-EDITABLE-JOB:abc\n", out source, out width, out font) && source == mixed && width == 85.5m && font == 12,
+                "Prepared PDF must recover the original paragraph and layout");
+            Check(!Paragraph.TryDecode(prepared + "manual edit", out source, out width, out font), "Prepared PDF manual edits must not be discarded");
+            Check(prepared.Contains(@"\includegraphics{\detokenize{C:/cache with spaces/paragraph.pdf}}") && !prepared.Contains(@"\frac"),
+                "Native wrapper must use the prepared PDF without recompiling math");
             Check(!Paragraph.TryDecode("$x$", out source, out width, out font), "Old raw formulas must remain raw");
             Check(!Paragraph.TryDecode("%L2A-PARAGRAPH-V1:90:11:???\n", out source, out width, out font), "Malformed metadata must remain raw");
             Check(Paragraph.ConvertBody(@"Price \$5; C:\tmp; {x} ~ ^ #").Contains(@"Price \$5; C:\textbackslash{}tmp; \{x\} \textasciitilde{} \textasciicircum{} \#"), "Literal characters changed");

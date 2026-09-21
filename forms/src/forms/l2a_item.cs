@@ -52,9 +52,11 @@ namespace L2A.FORMS
             // Set the latex code.
             textbox.Text = property_list.sub_lists_["latex"].main_option_;
 
+            InitializeParagraphControls();
+
             // Set the position of the cursor in the text box.
             int cursor_position = Int32.Parse(property_list.sub_lists_["latex"].options_["cursor_position"]);
-            textbox.SelectionStart = cursor_position;
+            textbox.SelectionStart = Math.Max(0, Math.Min(cursor_position, textbox.TextLength));
             textbox.SelectionLength = 0;
 
             // Set the textbox to be active.
@@ -157,8 +159,38 @@ namespace L2A.FORMS
 
         private void OkClick(object sender, EventArgs e)
         {
+            try { this.StoreValues(); }
+            catch (FormatException error)
+            {
+                MessageBox.Show(this, error.Message, "Check paragraph", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                textbox.Focus();
+                return;
+            }
+            if (paragraph_mode_.Checked && editable_text_.Checked)
+            {
+                string source = textbox.Text;
+                decimal width = paragraph_width_.Value, font = paragraph_font_.Value;
+                preparing_ = true; Enabled = false; UseWaitCursor = true;
+                paragraph_help_.Text = "Preparing editable text and vector formulas...";
+                Task.Factory.StartNew(() => L2A.UTIL.EditableParagraph.Prepare(source, width, font)).ContinueWith(task => {
+                    preparing_ = false; Enabled = true; UseWaitCursor = false; UpdateParagraphHelp();
+                    if (task.IsFaulted) {
+                        MessageBox.Show(this, task.Exception.GetBaseException().Message, "Check paragraph", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        return;
+                    }
+                    try {
+                        string folder = task.Result;
+                        L2A.UTIL.EditableParagraph.Launch(folder);
+                        return_parameter_list_.sub_lists_["latex"].main_option_ += "\n%L2A-EDITABLE-JOB:" + System.IO.Path.GetFileName(folder) + "\n";
+                        form_result_ = "ok";
+                        Close();
+                    } catch (Exception error) {
+                        MessageBox.Show(this, error.Message, "Editable paragraph", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    }
+                }, TaskScheduler.FromCurrentSynchronizationContext());
+                return;
+            }
             this.form_result_ = "ok";
-            this.StoreValues();
             this.Close();
         }
 
@@ -169,7 +201,8 @@ namespace L2A.FORMS
 
         private bool FormIsChanged()
         {
-            StoreValues();
+            try { StoreValues(); }
+            catch (FormatException) { return true; }
             L2A.UTIL.ParameterList property_list = input_parameter_list_.sub_lists_["property_list"];
             return return_parameter_list_.options_["text_align_horizontal"] != property_list.options_["text_align_horizontal"] ||
                 return_parameter_list_.options_["text_align_vertical"] != property_list.options_["text_align_vertical"] ||
@@ -213,11 +246,23 @@ namespace L2A.FORMS
             // Close if escape is hit.
             if (e.KeyCode == Keys.Escape)
             {
+                e.SuppressKeyPress = true;
                 CancelClick(sender, e);
+                return;
             }
 
             if (e.KeyCode == Keys.Enter)
             {
+                // Paragraphs use normal Enter for newlines and Ctrl+Enter to submit.
+                if (paragraph_mode_.Checked)
+                {
+                    if (e.Control)
+                    {
+                        e.SuppressKeyPress = true;
+                        OkClick(sender, e);
+                    }
+                    return;
+                }
                 // Check if shift key is down.
                 if (Control.ModifierKeys == Keys.Shift)
                 {
@@ -226,6 +271,7 @@ namespace L2A.FORMS
                 else
                 {
                     // Press ok when enter is hit.
+                    e.SuppressKeyPress = true;
                     OkClick(sender, e);
                 }
             }
@@ -323,11 +369,102 @@ namespace L2A.FORMS
 
             // Set the latex text options.
             return_parameter_list_.sub_lists_["latex"] = new L2A.UTIL.ParameterList();
-            return_parameter_list_.sub_lists_["latex"].main_option_ = textbox.Text;
+            return_parameter_list_.sub_lists_["latex"].main_option_ = paragraph_mode_.Checked ?
+                L2A.UTIL.Paragraph.Encode(textbox.Text, paragraph_width_.Value, paragraph_font_.Value) : textbox.Text;
             return_parameter_list_.sub_lists_["latex"].options_["cursor_position"] = textbox.SelectionStart.ToString();
         }
 
         //! Parameter list with the given options from the main application.
         protected L2A.UTIL.ParameterList input_parameter_list_;
+
+        private CheckBox paragraph_mode_;
+        private CheckBox editable_text_;
+        private bool preparing_;
+        private NumericUpDown paragraph_width_;
+        private NumericUpDown paragraph_font_;
+        private Label paragraph_help_;
+        private bool switching_mode_;
+
+        private void InitializeParagraphControls()
+        {
+            // Keep this layout separate from the upstream designer-generated form.
+            ClientSize = new Size(940, 480);
+            MinimumSize = new Size(956, 519);
+            FormBorderStyle = FormBorderStyle.Sizable;
+            MaximizeBox = true;
+            button_ok.Left = ClientSize.Width - button_ok.Width - 12;
+            button_cancel.Left = button_ok.Left;
+            button_ok.Anchor = button_cancel.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            group_text.Size = new Size(ClientSize.Width - group_text.Left - 12, ClientSize.Height - group_text.Top - 12);
+            group_text.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            group_text.Text = "Text and formulas";
+
+            paragraph_mode_ = new CheckBox { Name = "paragraph_mode", Text = "Paragraph + math", AutoSize = true, Location = new Point(10, 24) };
+            var widthLabel = new Label { Text = "Width (mm)", AutoSize = true, Location = new Point(180, 26) };
+            paragraph_width_ = new NumericUpDown { Name = "paragraph_width", AccessibleName = "Paragraph width in millimeters", Minimum = 10, Maximum = 400, DecimalPlaces = 1, Value = 90, Location = new Point(252, 22), Width = 64 };
+            var fontLabel = new Label { Text = "Font (pt)", AutoSize = true, Location = new Point(340, 26) };
+            paragraph_font_ = new NumericUpDown { Name = "paragraph_font", AccessibleName = "Paragraph font size in points", Minimum = 6, Maximum = 72, DecimalPlaces = 1, Value = 11, Location = new Point(400, 22), Width = 64 };
+            editable_text_ = new CheckBox { Name = "editable_text", Text = "Editable AI text (Times New Roman)", AutoSize = true, Checked = true, Location = new Point(10, 54) };
+            FormClosing += (sender, e) => { if (preparing_) e.Cancel = true; };
+            paragraph_width_.Left = widthLabel.Right + 12;
+            fontLabel.Left = paragraph_width_.Right + 24;
+            paragraph_font_.Left = fontLabel.Right + 12;
+            textbox.Location = new Point(10, 88);
+            textbox.Size = new Size(group_text.ClientSize.Width - 20, group_text.ClientSize.Height - 147);
+            textbox.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            textbox.AcceptsTab = true;
+            textbox.DetectUrls = false;
+            paragraph_help_ = new Label { Location = new Point(10, group_text.ClientSize.Height - 53), Size = new Size(group_text.ClientSize.Width - 20, 46), Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right };
+            group_text.Controls.AddRange(new Control[] { paragraph_mode_, widthLabel, paragraph_width_, fontLabel, paragraph_font_, editable_text_, paragraph_help_ });
+
+            string source;
+            decimal width, font;
+            if (L2A.UTIL.Paragraph.TryDecode(textbox.Text, out source, out width, out font))
+            {
+                textbox.Text = source;
+                paragraph_width_.Value = width;
+                paragraph_font_.Value = font;
+                paragraph_mode_.Checked = true;
+            }
+            paragraph_mode_.CheckedChanged += ParagraphModeChanged;
+            UpdateParagraphHelp();
+        }
+
+        private void ParagraphModeChanged(object sender, EventArgs e)
+        {
+            if (switching_mode_) return;
+            switching_mode_ = true;
+            try
+            {
+                if (paragraph_mode_.Checked)
+                {
+                    string source;
+                    decimal width, font;
+                    if (L2A.UTIL.Paragraph.TryDecode(textbox.Text, out source, out width, out font))
+                    {
+                        textbox.Text = source;
+                        paragraph_width_.Value = width;
+                        paragraph_font_.Value = font;
+                    }
+                    original_size.Checked = true;
+                    pos_0.Checked = true;
+                }
+                else textbox.Text = L2A.UTIL.Paragraph.Encode(textbox.Text, paragraph_width_.Value, paragraph_font_.Value);
+            }
+            catch (FormatException error)
+            {
+                paragraph_mode_.Checked = true;
+                MessageBox.Show(this, error.Message, "Check paragraph", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            finally { switching_mode_ = false; UpdateParagraphHelp(); }
+        }
+
+        private void UpdateParagraphHelp()
+        {
+            editable_text_.Enabled = paragraph_width_.Enabled = paragraph_font_.Enabled = paragraph_mode_.Checked;
+            paragraph_help_.Text = paragraph_mode_.Checked ?
+                "English text + $inline math$ / $$display math$$. Enter: newline; Ctrl+Enter: insert.\nEditable AI text creates text runs and vector formulas. Edits do not reflow the layout." :
+                "Raw LaTeX. Enter: insert; Shift+Enter: newline.\nEnable Paragraph + math to wrap pasted prose to a fixed width.";
+        }
     }
 }

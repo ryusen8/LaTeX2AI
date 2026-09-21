@@ -43,6 +43,11 @@ namespace L2A
 
             // Check if correct number of arguments are given.
             string[] arguments = Environment.GetCommandLineArgs();
+            if (arguments.Length == 4 && arguments[1] == "--editable-job")
+            {
+                L2A.UTIL.EditableParagraph.Worker(arguments[2], Int32.Parse(arguments[3]));
+                return;
+            }
             if (arguments.Length != 6) L2A.ERR.ExceptionClass.Exception("Exactly 6 input arguments are expected.");
 
             // Convert the xml to a parameter list.

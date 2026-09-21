@@ -1,0 +1,103 @@
+# Paragraphs containing formulas (Windows v0.0.10 compatibility build)
+
+The item dialog accepts English paragraphs containing `$inline math$`,
+`$$display math$$`, `\(...\)` and `\[...\]`.
+
+1. Select the LaTeX2AI create/edit tool and click the desired insertion point.
+2. Enable **Paragraph + math** and paste your paragraph.
+3. Set **Width (mm)** and **Font (pt)**.
+4. Leave **Editable AI text (Times New Roman)** enabled for native Illustrator
+   text and embedded vector formulas. Press **Ctrl+Enter** or **OK**.
+5. Use Illustrator's Type tool to edit the resulting text (enter the group or
+   ungroup it if needed).
+
+Enter inserts a newline; a blank line starts a paragraph. Single newlines are
+joined as spaces. Write `\$` for a literal dollar sign. Plain prose such as
+`5%`, `A & B` and `sample_1` needs no LaTeX escaping. Formula contents are LaTeX.
+English/Latin prose and common typographic punctuation are supported.
+
+Example:
+
+```text
+The energy $E=mc^2$ increases by 5% & the label is sample_1.
+
+The independent result is $$a^2+b^2=c^2.$$ More text follows.
+```
+
+## Editable output and limitations
+
+The editable mode creates a group containing native **point-text frames** and
+formula groups. Text runs are split at line breaks and at formulas; they are
+not a single threaded area-text frame. Spaces are retained. Initial layout
+wraps to the requested width and aligns inline formulas to the text baseline.
+Display formulas occupy a centered line. Prose starts in Times New Roman;
+Illustrator can change its font, size, color and contents afterward.
+
+Editing text does **not** move neighboring formulas or reflow the full paragraph.
+Regenerate a paragraph for substantial content or width changes. Formulas are
+embedded outlined vectors, preserve their TeX appearance, and do not require
+installed TeX fonts when reopening the AI file. They are **not** individually
+editable LaTeX2AI formula items. The group's Note keeps the pasted source; each
+formula group's Note keeps its math source. Notes do not track subsequent text
+edits. Keep your source text if you plan to regenerate the layout.
+
+Editable formulas use `standalone`, `amsmath` and `amssymb` with the LaTeX and
+Ghostscript executables configured in LaTeX2AI Options. Custom document-header
+macros are not imported into this mode. A formula or unbroken word wider than
+the chosen width produces an error: increase the width or reduce the font size.
+Up to 100 distinct formulas can be compiled in one conversion.
+
+Uncheck **Editable AI text** to keep a whole paragraph as one conventional
+LaTeX2AI linked PDF. That mode supports reopening its source and changing the
+width/font together. Uncheck **Paragraph + math** for the original raw-LaTeX
+workflow. Switching to raw mode shows generated TeX; manual raw-code edits are
+not silently discarded when switching back.
+
+## Failure behavior and data
+
+Formula compilation runs before the form is submitted. Invalid delimiters or
+compile failures keep the dialog open. In editable mode the native plugin first
+places a normal paragraph. A separate worker then finds **only** the object
+containing that job's unique marker, constructs the editable group, and removes
+the temporary paragraph after construction succeeds. Failure before commit
+leaves the normal paragraph intact and removes partial editable artwork.
+
+Jobs, source copies, formula PDFs and diagnostic logs are local under
+`%LOCALAPPDATA%\LaTeX2AI\paragraph-jobs`. Final editable artwork embeds all formula
+vectors and has no dependency on these files. The native plugin may also leave
+its temporary paragraph PDF in the document's `links` directory. No paragraph
+content is sent over the network.
+
+## Build and validation
+
+This feature changes the C# forms application; it does not require rebuilding
+the Illustrator SDK native plugin. It targets the installed v0.0.10 protocol.
+From the repository root, on Windows with .NET Framework MSBuild and Python:
+
+```powershell
+./scripts/windows_compat/build_forms.ps1 -OutputDirectory ./output/paragraph-forms -PythonExe python
+./scripts/windows_compat/test_paragraphs.ps1
+```
+
+The forms build pins the handshake to upstream v0.0.10's commit
+`b5c0db97017536b86b162bce2067a6fd8ba203df`; it does not disable validation.
+`L2A_FORMS_PLUGIN_SHA` is an optional validated override in the header generator;
+normal native builds still use their current Git SHA. The test script runs the
+parser/metadata regression tests without Illustrator. With `-FormsExe <built
+exe>` it also compiles real formula fixtures using the current user's configured
+LaTeX/Ghostscript and records generated scripts and vector PDFs. It does not
+change an open Illustrator document.
+
+The desktop validation used Illustrator 2022 (26.0.1), MiKTeX and Ghostscript
+10.08.0: a real plugin-window submission generated 8 native text frames and 3
+formula groups; text contents were changed through Illustrator's text API;
+saving and reopening retained the native text and embedded formulas. Additional
+fixtures cover display/inline math, punctuation, escaping, comments, invalid
+input, widths, decimal locales and CRLF round trips. The local build resolves
+.NET references from the installed runtime because the .NET 4 targeting pack
+is absent (MSB3644); the resulting executable was exercised in the host.
+
+Close any LaTeX2AI dialog before replacing `LaTeX2AIForms.exe` beside the installed
+`LaTeX2AI.aip`. Preserve the compatibility-patched native plugin. The old forms
+executable can be restored independently. This feature does not alter the
+existing ASCII-path/startup/cancellation compatibility patches.

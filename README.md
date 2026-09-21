@@ -1,3 +1,5 @@
+> **Editable paragraphs:** paste English prose containing `$...$` / `$$...$$` into the item dialog. The new paragraph mode creates editable Illustrator text runs and embedded vector formulas. [Usage, limitations and build instructions](doc/paragraphs.md).
+
 > **v0.0.10 compatibility branch:** includes a verified binary patch for Illustrator 2022 to disable startup update notifications, decode MiKTeX output correctly, and fix unsaved-document path warnings. Additional cancellation/shutdown source guards require an SDK build. See [compatibility notes and validation](doc/WINDOWS_COMPATIBILITY.md).
 
 ![LaTeX2AI](/logo/logo_black.png?raw=true)

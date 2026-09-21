@@ -141,7 +141,7 @@ def create_cs_headers():
         '    class Constants',
         '    {',
         '        public const string l2a_version_git_sha_head_ = "{}";'.format(
-            get_git_sha()),
+            get_forms_plugin_sha()),
         '    }',
         '}',
         ''
@@ -155,6 +155,16 @@ def create_cs_headers():
     # The script is caled form the base repository directory.
     with open(os.path.join(dir_path, 'version.cs'), 'w') as version_header:
         version_header.write(license_c + '\n'.join(version_lines))
+
+
+def get_forms_plugin_sha():
+    """Allow a forms-only build targeting a specific, unchanged native plugin."""
+    value = os.environ.get('L2A_FORMS_PLUGIN_SHA')
+    if value is None:
+        return get_git_sha()
+    if len(value) != 40 or any(c not in '0123456789abcdef' for c in value):
+        raise ValueError('L2A_FORMS_PLUGIN_SHA must be a full lowercase Git SHA.')
+    return value
 
 
 if __name__ == '__main__':

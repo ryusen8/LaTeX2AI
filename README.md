@@ -1,3 +1,5 @@
+> **v0.0.10 compatibility branch:** startup update notifications are disabled; Windows compiler-output decoding and unsaved-document path checks are fixed. See [compatibility notes and validation](doc/WINDOWS_COMPATIBILITY.md).
+
 ![LaTeX2AI](/logo/logo_black.png?raw=true)
 
 LaTeX2AI is a plugin for Adobe Illustrator that enables the use of text labels typeset in LaTeX inside an Illustrator document.

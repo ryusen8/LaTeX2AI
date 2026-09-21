@@ -240,20 +240,29 @@ ai::FilePath L2A::UTIL::GetDocumentPath(bool fail_if_not_saved)
     l2a_check_ai_error(error);
 
     // Check if the path is a file.
-    if (!IsFile(path) && fail_if_not_saved)
+    if (!IsFile(path))
     {
-        l2a_warning(ai::UnicodeString(
-            "The document is not saved! Almost all functionality of LaTeX2AI requires the document to be saved."));
+        if (fail_if_not_saved)
+        {
+            l2a_warning(ai::UnicodeString(
+                "The document is not saved! Almost all functionality of LaTeX2AI requires the document to be saved."));
+        }
+        // A localized untitled document name is not a filesystem path.
+        return path;
     }
     else
     {
         // Check if non ASCII characters appear in the path.
-        ai::UnicodeString unicode_path = path.GetFullPath();
-        ai::UnicodeString utf8_path(path.GetFullPath().as_UTF8());
-        if (unicode_path != utf8_path)
-            l2a_warning(
-                ai::UnicodeString("The document path contains non ASCII characters. LaTeX2AI is only working if there "
-                                  "are non ASCII characters in the document name / path."));
+        const std::string utf8_path = path.GetFullPath().as_UTF8();
+        for (const unsigned char byte : utf8_path)
+        {
+            if (byte >= 0x80)
+            {
+                l2a_warning(ai::UnicodeString(
+                    "This version of LaTeX2AI requires an ASCII-only document name and folder path. Path: ") +
+                    path.GetFullPath());
+            }
+        }
     }
 
     return path;
@@ -388,8 +397,10 @@ int L2A::UTIL::ExecuteCommandLineNoErrors(const ai::UnicodeString& command, ai::
             return -69;
         }
 
-        // Convert comman output to unicode string.
-        command_output = ai::UnicodeString(result_string);
+        // MiKTeX and curl emit UTF-8, independently of the Windows ANSI code page.
+        // The platform-default constructor can throw on e.g. Hàn Thế Thành,
+        // making a valid pdflatex executable appear to have an invalid path.
+        command_output = ai::UnicodeString::FromUTF8(result_string);
 
         // Everything succeeded and return the exit code.
         return (int)exitCode;

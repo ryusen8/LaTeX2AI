@@ -7,7 +7,7 @@ The item dialog accepts English paragraphs containing `$inline math$`,
 2. Enable **Paragraph + math** and paste your paragraph.
 3. Set **Width (mm)** and **Font (pt)**.
 4. Leave **Editable AI text (Times New Roman)** enabled for native Illustrator
-   text and embedded vector formulas. Press **Ctrl+Enter** or **OK**.
+   text and editable LaTeX2AI formula objects. Press **Ctrl+Enter** or **OK**.
 5. Use Illustrator's Type tool to edit the resulting text (enter the group or
    ungroup it if needed).
 
@@ -27,19 +27,29 @@ The independent result is $$a^2+b^2=c^2.$$ More text follows.
 ## Editable output and limitations
 
 The editable mode creates a group containing native **point-text frames** and
-formula groups. Text runs are split at line breaks and at formulas; they are
+LaTeX2AI placed items. Text runs are split at line breaks and at formulas; they are
 not a single threaded area-text frame. Spaces are retained. Initial layout
 wraps to the requested width and aligns inline formulas to the text baseline.
 Display formulas occupy a centered line. Prose starts in Times New Roman;
 Illustrator can change its font, size, color and contents afterward.
 
 Editing text does **not** move neighboring formulas or reflow the full paragraph.
-Regenerate a paragraph for substantial content or width changes. Formulas are
-embedded outlined vectors, preserve their TeX appearance, and do not require
-installed TeX fonts when reopening the AI file. They are **not** individually
-editable LaTeX2AI formula items. The group's Note keeps the pasted source; each
-formula group's Note keeps its math source. Notes do not track subsequent text
-edits. Keep your source text if you plan to regenerate the layout.
+Regenerate a paragraph for substantial content or width changes. Formulas remain
+normal **LaTeX2AI linked PDF items**, with their original TeX fonts, LaTeX source,
+and native placement settings. They are never embedded or converted to outlines.
+Click a formula with the LaTeX2AI create/edit tool to edit and recompile it; if
+Illustrator selects the outer group, enter the group or ungroup it first.
+The formula editor includes a local font-size wrapper so recompilation preserves
+its paragraph font size. The group's Note keeps the pasted paragraph source;
+that original paragraph source does not track later text or formula edits.
+
+Each item carries its PDF encoded contents and the Windows v0.0.10 native hash
+from creation. Formula files are copied beside the native placeholder in the
+document's normal `links` folder, just like regular LaTeX2AI items.
+Keep the `links` folder when moving or sharing the AI file. Existing paragraphs
+created by the earlier outlined-formula build must be regenerated from their
+source to regain formula editing; changing the installed executable alone does
+not convert previously outlined artwork.
 
 Editable formulas use `standalone`, `amsmath` and `amssymb` with the LaTeX and
 Ghostscript executables configured in LaTeX2AI Options. Custom document-header
@@ -63,8 +73,8 @@ the temporary paragraph after construction succeeds. Failure before commit
 leaves the normal paragraph intact and removes partial editable artwork.
 
 Jobs, source copies, formula PDFs and diagnostic logs are local under
-`%LOCALAPPDATA%\LaTeX2AI\paragraph-jobs`. Final editable artwork embeds all formula
-vectors and has no dependency on these files. The native plugin may also leave
+`%LOCALAPPDATA%\LaTeX2AI\paragraph-jobs`. Completed formula items link to copies in the document's normal `links` folder
+and contain their own encoded PDF data; they do not depend on job files. The native plugin may also leave
 its temporary paragraph PDF in the document's `links` directory. No paragraph
 content is sent over the network.
 
@@ -85,13 +95,13 @@ The forms build pins the handshake to upstream v0.0.10's commit
 normal native builds still use their current Git SHA. The test script runs the
 parser/metadata regression tests without Illustrator. With `-FormsExe <built
 exe>` it also compiles real formula fixtures using the current user's configured
-LaTeX/Ghostscript and records generated scripts and vector PDFs. It does not
+LaTeX/Ghostscript and records generated scripts and linked PDFs. It does not
 change an open Illustrator document.
 
 The desktop validation used Illustrator 2022 (26.0.1), MiKTeX and Ghostscript
 10.08.0: a real plugin-window submission generated 8 native text frames and 3
-formula groups; text contents were changed through Illustrator's text API;
-saving and reopening retained the native text and embedded formulas. Additional
+native formula items; a formula was reopened with the plugin and recompiled; text contents were changed through Illustrator's text API;
+saving and reopening retained the native text and editable formulas. Additional
 fixtures cover display/inline math, punctuation, escaping, comments, invalid
 input, widths, decimal locales and CRLF round trips. The local build resolves
 .NET references from the installed runtime because the .NET 4 targeting pack

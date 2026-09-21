@@ -55,14 +55,32 @@
                     tf.textRange.characterAttributes.fillColor = black;
                     frames++;
                 } else {
-                    var math = group.groupItems.add();
-                    math.name = 'Formula'; math.note = item.text || '';
-                    var placed = doc.placedItems.add();
-                    placed.file = new File(item.file);
-                    placed.move(math, ElementPlacement.PLACEATEND);
-                    placed.position = [x, baseline + item.h];
-                    placed.embed();
-                    if (math.pageItems.length === 0) throw new Error('Formula import produced no artwork.');
+                    // Copy a real native item, including its kAsIs/top-left placement
+                    // options; a newly created generic PlacedItem would trigger warnings.
+                    var placed = original.duplicate(group, ElementPlacement.PLACEATEND);
+                    placed.note = item.note;
+                    // Store alongside the native placeholder, with the native filename.
+                    // The note also contains the encoded PDF, so it is self-recoverable.
+                    var nativePath = original.file.fsName.replace(/\\/g, '/');
+                    var suffix = nativePath.lastIndexOf('_LaTeX2AI_');
+                    if (suffix < 0) throw new Error('Unexpected native formula link path.');
+                    var target = new File(nativePath.substring(0, suffix + 10) + item.hash + '.pdf');
+                    if (!target.exists && !(new File(item.file)).copy(target.fsName))
+                        throw new Error('Could not save formula PDF in the document links directory.');
+                    placed.relink(target);
+                    placed.name = 'LaTeX2AI';
+                    // Relink preserves the placeholder's old boundary box. Reset it
+                    // to the PDF's natural size so selection/editing uses formula bounds.
+                    var box = placed.boundingBox;
+                    placed.width = Math.abs(box[2] - box[0]);
+                    placed.height = Math.abs(box[1] - box[3]);
+                    var matrix = placed.matrix;
+                    matrix.mValueA = 1; matrix.mValueB = 0;
+                    matrix.mValueC = 0; matrix.mValueD = -1;
+                    placed.matrix = matrix;
+                    // Both the native template and the precompiled PDF use 1 TeX pt border.
+                    var border = 72 / 72.27;
+                    placed.position = [x - border, baseline + item.h + border];
                     formulas++;
                 }
                 x += item.w;
@@ -83,7 +101,7 @@
             if (textWidth(s) > job.width + 0.01) throw new Error('A word is wider than the paragraph. Increase Width (mm).');
             addText(prefix + s); pendingSpace = '';
         }
-        // Formula PDFs contain paths only, so import cannot substitute math fonts.
+        // Keep formulas linked with native LaTeX2AI properties; never embed or outline them.
         app.userInteractionLevel = UserInteractionLevel.DONTDISPLAYALERTS;
         for (i = 0; i < job.segments.length; i++) {
             var segment = job.segments[i];

@@ -171,7 +171,7 @@ namespace L2A.FORMS
                 string source = textbox.Text;
                 decimal width = paragraph_width_.Value, font = paragraph_font_.Value;
                 preparing_ = true; Enabled = false; UseWaitCursor = true;
-                paragraph_help_.Text = "Preparing editable text and vector formulas...";
+                paragraph_help_.Text = "Preparing editable text and LaTeX2AI formulas...";
                 Task.Factory.StartNew(() => L2A.UTIL.EditableParagraph.Prepare(source, width, font)).ContinueWith(task => {
                     preparing_ = false; Enabled = true; UseWaitCursor = false; UpdateParagraphHelp();
                     if (task.IsFaulted) {
@@ -463,7 +463,7 @@ namespace L2A.FORMS
         {
             editable_text_.Enabled = paragraph_width_.Enabled = paragraph_font_.Enabled = paragraph_mode_.Checked;
             paragraph_help_.Text = paragraph_mode_.Checked ?
-                "English text + $inline math$ / $$display math$$. Enter: newline; Ctrl+Enter: insert.\nEditable AI text creates text runs and vector formulas. Edits do not reflow the layout." :
+                "English text + $inline math$ / $$display math$$. Enter: newline; Ctrl+Enter: insert.\nEditable AI text creates text runs and editable LaTeX2AI formulas. Edits do not reflow the layout." :
                 "Raw LaTeX. Enter: insert; Shift+Enter: newline.\nEnable Paragraph + math to wrap pasted prose to a fixed width.";
         }
     }

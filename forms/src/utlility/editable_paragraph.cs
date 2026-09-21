@@ -82,18 +82,24 @@ namespace L2A.UTIL
                         gs = root.GetAttribute("command_gs");
                     }
                     string stem = "formula" + cache.Count;
-                    string tex = "\\documentclass[border=0pt]{standalone}\n\\usepackage{amsmath,amssymb}\n\\newwrite\\metrics\n\\begin{document}\n" +
+                    string tex = "\\documentclass[border=1pt]{standalone}\n\\usepackage{amsmath,amssymb}\n\\newwrite\\metrics\n\\begin{document}\n" +
                         "\\fontsize{" + Number(font * 72.27m / 72m) + "}{" + Number(font * 1.25m) + "}\\selectfont%\n" +
                         "\\setbox0=\\hbox{$" + (segment.Kind == "display" ? "\\displaystyle " : "") + segment.Text + "\n$}%\n" +
                         "\\immediate\\openout\\metrics=" + stem + ".metrics%\n\\immediate\\write\\metrics{\\the\\wd0,\\the\\ht0,\\the\\dp0}%\n\\immediate\\closeout\\metrics%\n\\box0%\n\\end{document}\n";
                     File.WriteAllText(Path.Combine(folder, stem + ".tex"), tex, new UTF8Encoding(false));
                     Run(latex, "-interaction=nonstopmode -halt-on-error -no-shell-escape " + stem + ".tex", folder, stem + "-latex.log");
-                    Run(gs, "-q -dBATCH -dNOPAUSE -dSAFER -sDEVICE=pdfwrite -dNoOutputFonts -sOutputFile=" + stem + "-outline.pdf " + stem + ".pdf", folder, stem + "-gs.log");
+                    Run(gs, "-q -dBATCH -dNOPAUSE -dSAFER -sDEVICE=pdfwrite -sOutputFile=" + stem + "-linked.pdf " + stem + ".pdf", folder, stem + "-gs.log");
                     string[] metrics = File.ReadAllText(Path.Combine(folder, stem + ".metrics")).Trim().Split(',');
                     if (metrics.Length != 3) throw new FormatException("Unexpected formula dimensions.");
                     decimal w = Dimension(metrics[0]), h = Dimension(metrics[1]), d = Dimension(metrics[2]);
                     if (w > width * 72m / 25.4m) throw new FormatException("A formula is wider than the paragraph. Increase Width (mm) or reduce Font (pt).");
-                    result = "{kind:" + Quote(segment.Kind) + ",text:" + Quote(segment.Text) + ",file:" + Quote(Path.Combine(folder, stem + "-outline.pdf").Replace('\\', '/')) + ",w:" + Number(w) + ",h:" + Number(h) + ",d:" + Number(d) + "}";
+                    // Preserve the native v0.0.10 PDF payload and placement schema.
+                    string formulaCode = "{\\fontsize{" + Number(font * 72.27m / 72m) + "}{" + Number(font * 1.25m) +
+                        "}\\selectfont $" + (segment.Kind == "display" ? "\\displaystyle " : "") + segment.Text + "\n$}";
+                    byte[] pdfBytes = File.ReadAllBytes(Path.Combine(folder, stem + "-linked.pdf"));
+                    string pdfHash = NativeHash(Convert.ToBase64String(pdfBytes));
+                    string note = CreateFormulaNote(formulaCode, pdfBytes);
+                    result = "{kind:" + Quote(segment.Kind) + ",text:" + Quote(segment.Text) + ",note:" + Quote(note) + ",hash:" + Quote(pdfHash) + ",file:" + Quote(Path.Combine(folder, stem + "-linked.pdf").Replace('\\', '/')) + ",w:" + Number(w) + ",h:" + Number(h) + ",d:" + Number(d) + "}";
                     cache.Add(key, result);
                 }
                 data.Append(result);
@@ -103,6 +109,33 @@ namespace L2A.UTIL
             using (var reader = new StreamReader(stream)) data.Append(reader.ReadToEnd());
             File.WriteAllText(Path.Combine(folder, "insert.jsx"), data.ToString(), new UTF8Encoding(false));
             return folder;
+        }
+        public static string CreateFormulaNote(string formulaCode, byte[] pdfBytes)
+        {
+            var xml = new XmlDocument();
+            var root = xml.CreateElement("LaTeX2AI_item");
+            xml.AppendChild(root);
+            root.SetAttribute("placed_option", "keep_scale");
+            root.SetAttribute("text_align_horizontal", "left");
+            root.SetAttribute("text_align_vertical", "top");
+            var latex = xml.CreateElement("latex");
+            latex.SetAttribute("cursor_position", "0");
+            latex.InnerText = formulaCode;
+            root.AppendChild(latex);
+            string encoded = Convert.ToBase64String(pdfBytes);
+            var pdf = xml.CreateElement("pdf_file_contents");
+            pdf.SetAttribute("hash", NativeHash(encoded));
+            pdf.InnerText = encoded;
+            root.AppendChild(pdf);
+            return xml.OuterXml;
+        }
+        public static string NativeHash(string encoded)
+        {
+            // std::hash<std::string> in the pinned Windows x64 MSVC v0.0.10 build.
+            // Its input is ASCII base64, not PDF bytes or UTF-16 code units.
+            ulong hash = 14695981039346656037UL;
+            unchecked { foreach (char c in encoded) hash = (hash ^ (byte)c) * 1099511628211UL; }
+            return hash.ToString("x", CultureInfo.InvariantCulture);
         }
         private static decimal Dimension(string text) {
             return Decimal.Parse(text.Trim().Replace("pt", ""), CultureInfo.InvariantCulture) * 72m / 72.27m;

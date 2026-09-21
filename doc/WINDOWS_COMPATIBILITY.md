@@ -148,6 +148,50 @@ The adapter and `patch_no_update.py` alone do not apply the native document-path
 changes. No prebuilt binaries, local settings, or personal documents are tracked
 in this branch.
 
+## Compiler works in the installation terminal but fails from Explorer
+
+The native warning also covers a compiler that starts successfully but exits
+with an error. A correct executable directory alone does not establish a working
+MiKTeX installation. In the affected setup, a process launched by Explorer returned:
+
+```text
+It seems that this is a fresh TeX installation.
+Please finish the setup before proceeding.
+```
+
+`initexmf --report` in that same desktop context reported `SetupDate: not yet`
+and an incorrect default user installation under `Roaming\MiKTeX\2.9`.
+The `Core\UserInstall` registration was absent. Running the same commands from
+the installation terminal instead found a complete MiKTeX 25.12 installation.
+Generated configuration, font maps and formats were found in the installation
+app's private `LocalCache\Roaming\MiKTeX` and `LocalCache\Local\MiKTeX` trees.
+This registry/filesystem view difference persisted even when the executable,
+working directory and ordinary environment variables matched.
+
+Repair the actual desktop user's MiKTeX setup outside that private installation
+context. Prefer completing setup through the MiKTeX installer/console launched
+from Explorer. For this already completed local installation, the missing
+per-user registration was restored and missing generated configuration, font
+maps and formats were copied from its completed private setup into the real
+user trees. Existing files were preserved and affected registry values were
+recorded before repair. Package-manager authentication values were not copied.
+The machine-specific recovery helper and configuration are not distributed.
+
+Verify `pdflatex -version`, the installation roots in `initexmf --report`, and
+real formula compilation from an independently Explorer-launched process. Then
+**double-click** both the Illustrator shortcut and an AI document in Explorer,
+checking that the Illustrator parent process is Explorer. Calling `Start-Process`
+on a shortcut or file from the installation terminal can retain the terminal's
+private context and is not equivalent to this test.
+
+On the affected machine, the desktop-side report now identifies MiKTeX 25.12
+with its actual installation/configuration/data roots, the version probe exits
+successfully, and a `standalone` formula using `amsmath` and `amssymb` compiles
+with automatic package installation disabled. Real Explorer double-clicks of
+both the desktop shortcut and the existing AI document start Illustrator without
+the compiler-path warning. This repair changes the MiKTeX installation state;
+it requires no additional changes to the native `.aip` binary.
+
 ## Validation
 
 On Chinese Windows (ANSI code page 936), Illustrator 2022 version 26.0.1,
@@ -184,11 +228,12 @@ Additional runtime-patch checks:
 - With an empty saved compiler path and a child PATH containing only Windows
   directories, Illustrator starts without a compiler-path dialog and saves the
   recovered absolute directory after normal shutdown.
-- Launching the actual desktop shortcut with an invalid saved directory, and
-  opening an existing ASCII-path AI file through Windows file association with
-  an empty saved directory, both recover without a dialog.
+- Launching the desktop shortcut with an invalid saved directory, and opening
+  an ASCII-path AI file with an empty saved directory, both recovered when
+  invoked from the installation terminal. These earlier checks did not cover
+  real Explorer double-clicks; see the separate desktop-context repair above.
 - In that first recovered session, a plugin-window paragraph submission using
-  `\\mathbb{R}^2` and `x_i` completes with 3 native text frames and 2 linked native
+  `\mathbb{R}^2` and `x_i` completes with 3 native text frames and 2 linked native
   formulas. Save/reopen retains both. Normal shutdown persists the real path;
   reopening the original document through file association succeeds again.
 

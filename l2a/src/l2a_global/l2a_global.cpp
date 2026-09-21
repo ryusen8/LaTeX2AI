@@ -51,8 +51,17 @@ L2A::GLOBAL::Global* L2A::GLOBAL::_l2a_global = nullptr;
  */
 L2A::GLOBAL::Global::~Global()
 {
-    // Save the options in a file.
-    L2A::UTIL::WriteFileUTF8(application_data_path_, ToString(), true);
+    // A canceled/failed setup must not overwrite the last saved settings.
+    if (!is_setup_) return;
+    // Destruction must not terminate Illustrator if saving the settings fails.
+    try
+    {
+        L2A::UTIL::WriteFileUTF8(application_data_path_, ToString(), true);
+    }
+    catch (...)
+    {
+        // Keep shutdown safe. Settings can be saved on the next successful run.
+    }
 }
 
 /**
@@ -139,10 +148,10 @@ void L2A::GLOBAL::Global::SetUp()
     if (!CheckLatexCommand(path_latex_))
     {
         // The path from the application data file is not valid. Try the default value.
-        path_latex_ = ai::FilePath(ai::UnicodeString(""));
+        const ai::FilePath default_latex_path(ai::UnicodeString(""));
 
         // "Officially" set the latex path and check if it is valid.
-        if (!SetLatexCommand(path_latex_)) return;
+        if (!SetLatexCommand(default_latex_path)) return;
     }
 
     // Everything was ok.

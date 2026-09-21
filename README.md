@@ -1,4 +1,4 @@
-> **v0.0.10 compatibility branch:** startup update notifications are disabled; Windows compiler-output decoding and unsaved-document path checks are fixed. See [compatibility notes and validation](doc/WINDOWS_COMPATIBILITY.md).
+> **v0.0.10 compatibility branch:** includes a verified binary patch for Illustrator 2022 to disable startup update notifications, decode MiKTeX output correctly, and fix unsaved-document path warnings. Additional cancellation/shutdown source guards require an SDK build. See [compatibility notes and validation](doc/WINDOWS_COMPATIBILITY.md).
 
 ![LaTeX2AI](/logo/logo_black.png?raw=true)
 

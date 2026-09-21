@@ -70,6 +70,7 @@ L2APlugin::L2APlugin(SPPluginRef pluginRef)
  */
 ASErr L2APlugin::Notify(AINotifierMessage* message)
 {
+    if (!annotator_ || fToolHandle.size() < 4) return kNoErr;
     ASErr error = kNoErr;
 
     try
@@ -131,7 +132,7 @@ ASErr L2APlugin::Message(char* caller, char* selector, void* message)
 
         if (error == kUnhandledMsgErr)
         {
-            if (strcmp(caller, kCallerAIAnnotation) == 0)
+            if (annotator_ && strcmp(caller, kCallerAIAnnotation) == 0)
             {
                 if (strcmp(selector, kSelectorAIDrawAnnotation) == 0)
                     // Draw the l2a annotator.
@@ -216,7 +217,9 @@ ASErr L2APlugin::ShutdownPlugin(SPInterfaceMessage* message)
     try
     {
         // If it was created, delete the global object.
-        if (L2A::GLOBAL::_l2a_global != nullptr) delete L2A::GLOBAL::_l2a_global;
+        auto* global = L2A::GLOBAL::_l2a_global;
+        L2A::GLOBAL::_l2a_global = nullptr;
+        delete global;
 
         // Dereference the annotator -> the object will be delete here, otherwise we would have a memory leak later.
         annotator_ = nullptr;
@@ -240,6 +243,7 @@ ASErr L2APlugin::ShutdownPlugin(SPInterfaceMessage* message)
  */
 ASErr L2APlugin::ToolMouseDown(AIToolMessage* message)
 {
+    if (!annotator_ || fToolHandle.empty()) return kNoErr;
     ASErr error = kNoErr;
 
     if (message->tool == this->fToolHandle[0])
@@ -423,6 +427,7 @@ ASErr L2APlugin::AddNotifier(SPInterfaceMessage* /*message*/)
  */
 ASErr L2APlugin::SelectTool(AIToolMessage* message)
 {
+    if (!annotator_ || fToolHandle.size() < 4) return kNoErr;
     AIErr error = kNoErr;
 
     if (message->tool == this->fToolHandle[0])
@@ -483,6 +488,7 @@ ASErr L2APlugin::SelectTool(AIToolMessage* message)
  */
 ASErr L2APlugin::DeselectTool(AIToolMessage*)
 {
+    if (!annotator_) return kNoErr;
     ASErr result = kNoErr;
     try
     {
@@ -505,6 +511,7 @@ ASErr L2APlugin::DeselectTool(AIToolMessage*)
  */
 ASErr L2APlugin::TrackToolCursor(AIToolMessage* message)
 {
+    if (!annotator_ || fToolHandle.empty()) return kNoErr;
     AIErr error = kNoErr;
 
     if (message->tool == this->fToolHandle[0])

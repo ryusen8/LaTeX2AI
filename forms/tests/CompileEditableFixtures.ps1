@@ -2,6 +2,19 @@
 param([Parameter(Mandatory=$true)][string]$FormsExe)
 $ErrorActionPreference = 'Stop'
 [void][Reflection.Assembly]::LoadFrom($FormsExe)
+$savedPath = $env:PATH
+try {
+    $env:PATH = "$env:WINDIR\System32;$env:WINDIR"
+    $localCompiler = Join-Path $env:LOCALAPPDATA 'Programs\MiKTeX\miktex\bin\x64\pdflatex.exe'
+    if (Test-Path $localCompiler) {
+        foreach ($directory in @('', (Join-Path $env:TEMP 'l2a-missing-compiler-directory'))) {
+            if ([L2A.UTIL.EditableParagraph]::ResolveCompiler($directory, 'pdflatex') -ne $localCompiler) {
+                throw 'Empty/invalid compiler setting did not recover without PATH.'
+            }
+        }
+        Write-Output 'PASS compiler recovery from empty/invalid settings without MiKTeX in PATH'
+    }
+} finally { $env:PATH = $savedPath }
 $formula = '{\fontsize{11}{14}\selectfont $\begin{aligned}a&<b\\c&=d\end{aligned}$}'
 [xml]$note = [L2A.UTIL.EditableParagraph]::CreateFormulaNote($formula, [Text.Encoding]::ASCII.GetBytes("PDF fixture"))
 if ($note.LaTeX2AI_item.latex.InnerText -cne $formula -or $note.LaTeX2AI_item.placed_option -ne 'keep_scale' -or $note.LaTeX2AI_item.text_align_horizontal -ne 'left' -or $note.LaTeX2AI_item.text_align_vertical -ne 'top') {

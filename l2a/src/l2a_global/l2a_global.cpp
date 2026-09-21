@@ -147,8 +147,14 @@ void L2A::GLOBAL::Global::SetUp()
     // Make sure the latex path is valid.
     if (!CheckLatexCommand(path_latex_))
     {
-        // The path from the application data file is not valid. Try the default value.
-        const ai::FilePath default_latex_path(ai::UnicodeString(""));
+        // Explorer may still have the PATH from before MiKTeX was installed.
+        // Prefer its current-user installation and retain that absolute path.
+        // Do not clear the saved path if discovery or the dialog is canceled.
+        ai::FilePath default_latex_path = L2A::UTIL::GetApplicationDataDirectory();
+        for (const auto component : {"Programs", "MiKTeX", "miktex", "bin", "x64"})
+            default_latex_path.AddComponent(ai::UnicodeString(component));
+        if (!CheckLatexCommand(default_latex_path))
+            default_latex_path = ai::FilePath(ai::UnicodeString(""));
 
         // "Officially" set the latex path and check if it is valid.
         if (!SetLatexCommand(default_latex_path)) return;

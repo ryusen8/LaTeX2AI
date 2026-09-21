@@ -136,6 +136,14 @@ input dialog accepted the complete pasted text and displayed compilation progres
 An independent native default-header dialog prevented completing that particular
 end-to-end UI insertion run; it is not counted as a successful UI insertion test.
 
+A subsequent startup-recovery test completed the whole plugin-window submission
+with a preexisting `amsmath`-only header: 3 native text frames and 2 linked
+formulas, including `\mathbb{R}^2`, survived save/reopen. The forms compiler
+resolver supports the first recovered session, before native startup has saved
+its corrected settings: it tries the configured compiler directory, the
+current-user MiKTeX installation, then absolute PATH entries. Empty and invalid
+saved paths are covered with MiKTeX absent from the test process PATH.
+
 Close any LaTeX2AI dialog before replacing `LaTeX2AIForms.exe` beside the installed
 `LaTeX2AI.aip`. Preserve the compatibility-patched native plugin. The old forms
 executable can be restored independently. This feature does not alter the

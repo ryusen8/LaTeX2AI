@@ -51,6 +51,27 @@ namespace L2A.UTIL
             return s.Append('"').ToString();
         }
         private static string Number(decimal value) { return value.ToString(CultureInfo.InvariantCulture); }
+        public static string ResolveCompiler(string directory, string command)
+        {
+            string name = command + ".exe";
+            if (!String.IsNullOrWhiteSpace(directory)) {
+                string configured = Path.Combine(directory, name);
+                if (File.Exists(configured)) return Path.GetFullPath(configured);
+            }
+            // Native startup recovery is persisted on shutdown. The forms process
+            // can therefore see stale/empty on-disk settings during that session.
+            string miktex = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                @"Programs\MiKTeX\miktex\bin\x64", name);
+            if (File.Exists(miktex)) return miktex;
+            foreach (string entry in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator)) {
+                if (String.IsNullOrWhiteSpace(entry)) continue;
+                try {
+                    string candidate = Path.Combine(entry.Trim().Trim('"'), name);
+                    if (Path.IsPathRooted(candidate) && File.Exists(candidate)) return candidate;
+                } catch (ArgumentException) { }
+            }
+            throw new FormatException("Could not find " + name + ". Set the compiler directory in LaTeX2AI Options.");
+        }
         public static string Prepare(string source, decimal width, decimal font)
         {
             return Prepare(source, width, font, CancellationToken.None, null);
@@ -68,7 +89,7 @@ namespace L2A.UTIL
             var settings = new XmlDocument();
             settings.Load(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Adobe\Illustrator\LaTeX2AI\LaTeX2AI_application_data.xml"));
             var root = settings.DocumentElement;
-            string latex = Path.Combine(root.GetAttribute("path_latex"), root.GetAttribute("command_latex") + ".exe");
+            string latex = ResolveCompiler(root.GetAttribute("path_latex"), root.GetAttribute("command_latex"));
             string gs = root.GetAttribute("command_gs");
             var unique = new HashSet<string>();
             foreach (var s in segments) if (s.Kind == "math" || s.Kind == "display") unique.Add(s.Kind + ":" + s.Text);

@@ -19,6 +19,8 @@ This branch starts at upstream tag `v0.0.10`
   clear the configured compiler path before trying the default. Guard callbacks
   when tools or the annotator are not initialized, clear the global pointer on
   shutdown, and prevent a settings-write exception from escaping destruction.
+- Discover the current-user MiKTeX directory before trying an empty PATH-based
+  compiler setting. Explorer can retain the PATH from before MiKTeX installation.
 
 The UTF-8 decoding fix targets MiKTeX and curl output. Commands that emit a
 different encoding may require additional handling.
@@ -39,18 +41,36 @@ trigger the ASCII-path warning. Use `patch_runtime.py` to apply that fix to the
 actual plugin, together with UTF-8 subprocess-output decoding and no-update:
 
 ```text
-python scripts/windows_compat/patch_runtime.py ORIGINAL.aip LaTeX2AI.aip
+python scripts/windows_compat/patch_runtime.py ORIGINAL.aip LaTeX2AI.aip --latex-dir "C:\Users\YOUR_USER\AppData\Local\Programs\MiKTeX\miktex\bin\x64"
 ```
 
 Use the **original upstream v0.0.10 Illustrator 2022 Windows binary**, not an
 already patched file. The script checks its entire SHA-256 and all replaced
-instructions, refuses in-place patching, and changes no section sizes or unwind
-tables. Close Illustrator, back up its installed plugin, then copy the output
-into its Plug-ins directory. Keep the original `LaTeX2AIForms.exe` alongside it.
+instructions and refuses in-place patching. Code edits keep their original
+sizes and the exception/unwind tables remain unchanged. The optional
+`--latex-dir` adds a non-executable, read-only `.l2acfg` data section containing
+the local compiler directory. Close Illustrator, back up its installed plugin,
+then copy the output into its Plug-ins directory. Keep the v0.0.10-compatible
+`LaTeX2AIForms.exe` alongside it, including the paragraph-enabled build if used.
 
 Set the compiler directory to the real MiKTeX `miktex\bin\x64` directory. The
 adapter is unnecessary with this patch. The UTF-8 change targets MiKTeX; output
 from other programs that use a different encoding is not covered.
+
+Use `--latex-dir` with an existing ASCII directory containing `pdflatex.exe`.
+The resulting binary is configured for that installation; regenerate it if
+moving to another machine. Saved valid settings take precedence. If they are
+empty or invalid, the plugin validates this registered absolute directory,
+uses it for real compilation, and persists it after a successful session.
+It does not accept a missing compiler or disable the version check.
+
+The original release clears `path_latex_` before trying the empty-path fallback
+and writes settings unconditionally during destruction. Canceling failed startup
+can therefore persist an empty path and repeat the error on subsequent launches.
+The runtime patch now skips settings serialization unless `is_setup_` is true,
+while still destroying all members normally. Earlier runtime packages applied
+neither this guard nor absolute-directory recovery; the source-only guard was
+insufficient to fix the installed precompiled plugin.
 
 Verified instruction changes (RVAs, **not file offsets**):
 
@@ -60,6 +80,8 @@ Verified instruction changes (RVAs, **not file offsets**):
 | `0xCE8DC` | Redirect subprocess-output construction to a UTF-8 thunk. |
 | `0xCE961` | Replace 11 bytes of unused executable alignment with `mov r8d, 1; jmp 0xA3110`. |
 | `0xCF375` | For optional unsaved documents, branch to the existing return path instead of the character check. |
+| `0x40652` | Check `is_setup_` before serializing settings; jump to member cleanup at `0x40689` after failed startup. |
+| `0x44189` | With `--latex-dir`, point the fallback constructor at the registered absolute directory instead of an empty string. |
 
 The thunk tail-calls the existing `UnicodeString(std::string const&,
 AICharacterEncoding)` constructor using `kAIUTF8CharacterEncoding = 1`. It
@@ -68,11 +90,13 @@ function ranges. The document-path branch still warns when a saved document
 contains non-ASCII characters or an operation requires an unsaved document to
 be saved. It skips only the inappropriate check on an optional untitled name.
 
-Runtime-patched SHA-256:
-`5a03ad140c5d20b0bf1ea249e709b78ff1d8987bf32e7745473bfd9f05eaa81c`.
+Portable runtime patch without `--latex-dir`, SHA-256:
+`38190b14d04a1ff8ab75013c7a2ff1c2c62a060475803113fdd62305ff7acf8f`.
+The hash with a registered directory depends on that directory.
 
-**Scope:** this binary patch does not contain the new startup-cancellation,
-callback, or destructor guards listed above; those require an SDK source build.
+**Scope:** the binary now includes the failed-setup settings-write guard and,
+with `--latex-dir`, compiler recovery. It does not include the source-only
+callback guards, global-pointer clearing, or settings-write exception handler.
 It also retains the original saved-file character check and warning text. Do
 not describe the binary as a full build of this branch.
 
@@ -154,11 +178,29 @@ Additional runtime-patch checks:
 - Disassembly verifies the constructor argument, tail-call, document return
   target, executable section, and absence of overlapping exception ranges.
 - Wrong, truncated, and already-patched inputs are rejected; the original file
-  is preserved, and all changes are confined to the four documented regions.
+  is preserved. `test_runtime_patch.py` checks the documented code changes,
+  failed-setup cleanup branch, read-only fallback section, RIP-relative target,
+  and unchanged exception/unwind tables.
+- With an empty saved compiler path and a child PATH containing only Windows
+  directories, Illustrator starts without a compiler-path dialog and saves the
+  recovered absolute directory after normal shutdown.
+- Launching the actual desktop shortcut with an invalid saved directory, and
+  opening an existing ASCII-path AI file through Windows file association with
+  an empty saved directory, both recover without a dialog.
+- In that first recovered session, a plugin-window paragraph submission using
+  `\\mathbb{R}^2` and `x_i` completes with 3 native text frames and 2 linked native
+  formulas. Save/reopen retains both. Normal shutdown persists the real path;
+  reopening the original document through file association succeeds again.
+
+The paragraph forms process reads settings from disk before native recovery is
+persisted on shutdown. It therefore resolves the configured compiler, then the
+current-user MiKTeX installation, then absolute PATH entries. Real compilation
+fixtures check empty/invalid settings with MiKTeX removed from the test PATH.
 
 These checks do not establish that every reported Illustrator exit is fixed.
 The available Windows report records an application hang, not a diagnosed
-native exception; the source-only shutdown safeguards remain unbuilt.
+native exception; the additional source-only callback and exception-handling
+safeguards remain unbuilt.
 
 Run the adapter's four environment-specific integration checks after installing
 MiKTeX and the adapter:

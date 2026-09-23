@@ -20,8 +20,9 @@
         group.name='Flow paragraph '+job.id;group.note='LaTeX2AI original paragraph source\n'+job.source;
         var path=doc.pathItems.rectangle(top,left,width,Math.max(200,job.font*2));
         var tf=doc.textFrames.areaText(path);tf.move(group,ElementPlacement.PLACEATEND);
-        tf.name='LaTeX2AI flowing text';
+        tf.name='Flow paragraph text';
         var metadata=new XML('<l2a_flow version="1"/>');metadata.@id=job.id;metadata.@font=job.font;
+        metadata.@placement='conform';
         var text='',slot=0;
         for(i=0;i<job.segments.length;i++){
             var segment=job.segments[i];
@@ -49,8 +50,8 @@
         tf.textRange.paragraphAttributes.justification=job.align==='center'?Justification.CENTER:job.align==='right'?Justification.RIGHT:job.align==='justify'?Justification.FULLJUSTIFYLASTLINELEFT:Justification.LEFT;
         tf.textRange.paragraphAttributes.hyphenation=false;
         for(i=0;i<tf.paragraphs.length;i++)if(/^[\uE000-\uE063]\r?$/.test(tf.paragraphs[i].contents))tf.paragraphs[i].paragraphAttributes.justification=Justification.CENTER;
-        tf.note=metadata.toXMLString();
-        l2aFlowLayout(tf,true);
+        l2aFlowTag(tf,'L2AFlowMetadata',metadata.toXMLString());
+        l2aFlowLayout(tf,true,true);
         original.remove();committed=true;
         doc.selection=null;tf.selected=true;
         if(job.done){var done=new File(job.done);if(done.open('w')){done.write('OK');done.close();}}

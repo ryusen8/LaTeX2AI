@@ -23,6 +23,9 @@ def sections(data):
 def main(original):
     fixed = patch.patched_bytes(original)
     assert len(fixed) == len(original)
+    assert fixed[0x758e8-0xc00:0x758ef-0xc00] == b'\x90'*7
+    # The string destructor and actual placement reconciliation still execute.
+    assert fixed[0x758f0-0xc00:0x7591a-0xc00] == original[0x758f0-0xc00:0x7591a-0xc00]
     allowed = {rva - 0xc00 + i for rva, before, after in patch.PATCHES for i in range(len(before))}
     assert all(i in allowed for i, pair in enumerate(zip(original, fixed)) if pair[0] != pair[1])
     # Unchanged destructor prologue and cleanup; the conditional jump skips both

@@ -295,6 +295,13 @@ void L2A::AI::AlignmentToFac(const PlaceAlignment& alignment, AIReal (&pos_fac)[
  */
 bool L2A::AI::IsL2AItem(const AIArtHandle& item)
 {
+    // Names are user-editable and are not proof that an object is placed art.
+    // In particular, area text must never be parsed as a formula property list.
+    short type;
+    const ASErr error = sAIArt->GetArtType(item, &type);
+    l2a_check_ai_error(error);
+    if (type != kPlacedArt) return false;
+
     // Get the name of the placed item.
     ai::UnicodeString item_name = GetName(item);
 

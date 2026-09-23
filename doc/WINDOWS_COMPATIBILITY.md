@@ -82,6 +82,7 @@ Verified instruction changes (RVAs, **not file offsets**):
 | `0xCF375` | For optional unsaved documents, branch to the existing return path instead of the character check. |
 | `0x40652` | Check `is_setup_` before serializing settings; jump to member cleanup at `0x40689` after failed startup. |
 | `0x44189` | With `--latex-dir`, point the fallback constructor at the registered absolute directory instead of an empty string. |
+| `0x758E8` | NOP only the 7-byte informational placement-mismatch alert call; retain string cleanup and `SetPlacement` reconciliation. |
 
 The thunk tail-calls the existing `UnicodeString(std::string const&,
 AICharacterEncoding)` constructor using `kAIUTF8CharacterEncoding = 1`. It
@@ -91,7 +92,7 @@ contains non-ASCII characters or an operation requires an unsaved document to
 be saved. It skips only the inappropriate check on an optional untitled name.
 
 Portable runtime patch without `--latex-dir`, SHA-256:
-`38190b14d04a1ff8ab75013c7a2ff1c2c62a060475803113fdd62305ff7acf8f`.
+`9b9eff554df2557e01037856bad4a2ab2578d9c06bdd6bfcd41cc582b557d17f`.
 The hash with a registered directory depends on that directory.
 
 **Scope:** the binary now includes the failed-setup settings-write guard and,
@@ -99,6 +100,18 @@ with `--latex-dir`, compiler recovery. It does not include the source-only
 callback guards, global-pointer clearing, or settings-write exception handler.
 It also retains the original saved-file character check and warning text. Do
 not describe the binary as a full build of this branch.
+
+Flowing paragraphs use native `fill_to_boundary_box` placement (`kConform`),
+because `keep_scale` (`kAsIs`) can distort linked PDF bounds after shear. Legacy
+metadata migrates in the forms helper; saving applies the normal native placement
+reconciliation. Only its redundant informational alert is suppressed. Tests
+verify that the following destructor and reconciliation instructions are intact.
+
+The native source also restricts formula detection to placed art. This type
+guard is **source-only and unbuilt** without the SDK. The installed fix instead
+renames flowing text frames to `Flow paragraph text` and stores their XML in the
+`L2AFlowMetadata` tag, outside the native formula name/note convention. This
+prevents the native editor from interpreting paragraph XML as formula XML.
 
 ### Earlier adapter-only workaround
 

@@ -11,6 +11,7 @@ Get-ChildItem -LiteralPath $folder -File | Copy-Item -Destination $shared -Force
 $script=[IO.File]::ReadAllText((Join-Path $folder 'insert.jsx')).Replace($folder.Replace('\','/'),$shared)
 $line=$script.Substring(0,$script.IndexOf("`n"))
 $checks=[IO.File]::ReadAllText((Join-Path $PSScriptRoot 'FlowHostAssertions.jsx'))
+$transformChecks=[IO.File]::ReadAllText((Join-Path $PSScriptRoot 'FlowTransformAssertions.jsx'))
 $app=[Runtime.InteropServices.Marshal]::GetActiveObject('Illustrator.Application')
 foreach($color in @('RGB','CMYK')) {
     $setup=$line+'var template=app.open(new File('+[L2A.UTIL.EditableParagraph]::Quote((Resolve-Path $NativeTemplate).Path.Replace('\','/'))+'));'+@'
@@ -26,5 +27,6 @@ src.copy(target.fsName);p.relink(target);p.note='%L2A-EDITABLE-JOB:'+job.id;p.po
         if($result -notlike 'OK:*'){throw $result}
         Write-Output "$color $result"
         Write-Output $app.DoJavaScript($checks)
+        Write-Output $app.DoJavaScript($transformChecks)
     } finally { $app.DoJavaScript('app.activeDocument.close(SaveOptions.DONOTSAVECHANGES);')|Out-Null }
 }

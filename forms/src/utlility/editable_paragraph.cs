@@ -139,6 +139,7 @@ namespace L2A.UTIL
                     byte[] pdfBytes = File.ReadAllBytes(Path.Combine(folder, stem + "-linked.pdf"));
                     string pdfHash = NativeHash(Convert.ToBase64String(pdfBytes));
                     string note = CreateFormulaNote(formulaCode, pdfBytes);
+                    if(flow)note=note.Replace("placed_option=\"keep_scale\"","placed_option=\"fill_to_boundary_box\"");
                     result = "{kind:" + Quote(segment.Kind) + ",text:" + Quote(segment.Text) + ",note:" + Quote(note) + ",hash:" + Quote(pdfHash) + ",file:" + Quote(Path.Combine(folder, stem + "-linked.pdf").Replace('\\', '/')) + ",w:" + Number(w) + ",h:" + Number(h) + ",d:" + Number(d) + "}";
                     result=result.Substring(0,result.Length-1)+",cap:"+Number(Dimension(metrics[3]))+"}";
                     cache.Add(key, result);

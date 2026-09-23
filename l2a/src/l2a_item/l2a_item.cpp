@@ -134,9 +134,8 @@ L2A::Item::Item(const AIArtHandle& placed_item_handle)
         if (method_ai != method_l2a || alignment_ai != alignment_l2a || clip_ai != clip_l2a)
         {
             // The options do not match, apply the ones from the LaTeX2AI options.
-            sAIUser->MessageAlert(ai::UnicodeString(
-                "The Illustrator placement values for a LaTeX2AI item do not match! The ones from the LaTeX2AI "
-                "settings are applied. This can happen if the placement values are changed manually via Illustrator."));
+            // Reconcile placement silently; flowing paragraphs intentionally
+            // migrate legacy keep-scale PDFs to transformable kConform items.
             L2A::AI::SetPlacement(placed_item_, property_);
         }
     }

@@ -18,7 +18,9 @@ The output is one native area-text frame plus linked LaTeX2AI PDF formula object
 Illustrator composes lines and paragraph alignment. Invisible anchor characters
 reserve space; a local helper positions the formulas after editing pauses
 (typically 1–2 seconds). This emulates inline artwork; Illustrator's scripting
-API does not expose native inline image anchors. Height grows with the content.
+API does not expose native inline image anchors. Height initially grows with the content.
+Once you manually change the frame height, that height is respected; use the
+native overset indicator and enlarge the frame to reveal overflowing content.
 An individual formula wider than the column is proportionally reduced to fit.
 
 Formula size tracks the anchor's type size and matches the capital height of
@@ -37,12 +39,19 @@ manages line spacing. RGB and CMYK documents are supported.
   copies of the text are outlined, then immediately removed.
 - Original pasted source is retained in the group's Note; Illustrator edits do
   not rewrite that source. Earlier fragmented paragraphs must be regenerated.
-- This first flow version targets horizontal rectangular, single-column text.
-  Threading frames, rotating/shearing the group, arbitrary shape text, copying
-  an anchor alone to another paragraph, or changing formula TeX dimensions after
-  insertion are not supported for automatic reflow. Regenerate after changing
-  formula source. Lock the completed group to stop automatic reflow before final
-  artwork transformations.
+- Select the whole generated group to move, scale (including nonuniform scale),
+  rotate or shear it. These affine transforms are preserved, including when you
+  subsequently edit prose. Change the area-text boundary instead when you want
+  to rewrap the column without scaling its contents.
+- Rectangular, single-column text is supported. Threading frames, perspective or
+  envelope distortion, arbitrary shape text, copying an anchor alone to another
+  paragraph, or changing formula TeX dimensions after insertion are not supported
+  for automatic reflow. Regenerate after changing formula source.
+- Edit prose with the **Type tool (T)**; use the LaTeX2AI tool for actual formulas.
+  Older flowing paragraphs migrate automatically to tagged metadata and a text
+  frame name that the native plugin cannot mistake for a formula. Save once after
+  migration to apply the native PDF placement settings needed for shear. Install
+  both the updated forms and runtime-patched AIP for silent reconciliation.
 - Synchronization is a separate scripting operation and can add an Undo step.
   It runs for the active document and skips locked/hidden frames. Allow it to
   finish before saving/exporting.
@@ -89,4 +98,5 @@ compiler tests. With Illustrator open, use Windows PowerShell to run
 -NativeTemplate <AI file with a native LaTeX2AI item>`. The template supplies
 native placement settings unavailable through scripting; the test never saves
 changes to it. Host tests cover RGB/CMYK layout, width, type size, alignment,
-anchor deletion/restoration and saved-document behavior.
+anchor deletion/restoration and saved-document behavior, plus nonuniform scale,
+rotation, shear, editing after transforms, manual height and metadata migration.

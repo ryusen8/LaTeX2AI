@@ -19,6 +19,10 @@ def relative_branch(opcode, source_rva, target_rva):
 # The verified release maps .text RVAs to file offsets by subtracting 0xC00.
 # Keep all code edits the same size; optional fallback data gets its own section.
 PATCHES = (
+    # Item constructor: reconcile native placement with saved item settings
+    # silently. Keep the UnicodeString construction/destruction and SetPlacement
+    # call intact; only omit the informational alert's indirect call.
+    (0x758E8, bytes.fromhex('ff942498000000'), b'\x90' * 7),
     # CheckGithubVersion: return before allocating a stack frame.
     (0x62AC0, bytes.fromhex('48'), bytes.fromhex('c3')),
     # ExecuteCommandLineNoErrors: redirect only the output-decoding constructor.

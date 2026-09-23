@@ -321,6 +321,8 @@ namespace L2A.FORMS
             else if (original_size.Checked == true && clip_check_box.Checked == true)
                 return_parameter_list_.options_["placed_option"] = "keep_scale_clip";
             else L2A.ERR.ExceptionClass.Exception("Can not write placed options!");
+            if(paragraph_mode_.Checked && editable_text_.Checked)
+                return_parameter_list_.options_["placed_option"]="fill_to_boundary_box";
 
             // Set the position options.
             if (pos_0.Checked == true)

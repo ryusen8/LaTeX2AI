@@ -1,8 +1,9 @@
 (function(){
-var d=app.activeDocument,tf=d.textFrames.getByName('LaTeX2AI flowing text'),g=tf.parent,results=[];
+var d=app.activeDocument,tf=d.textFrames.getByName('Flow paragraph text'),g=tf.parent,results=[];
 function ok(x,m){if(!x)throw new Error(m);results.push('PASS '+m);}
 function art(n){return g.placedItems[n];}
 l2aFlowLayout(tf,true);
+ok(tf.name.indexOf('LaTeX2AI')!==0&&tf.note===''&&l2aFlowTag(tf,'L2AFlowMetadata')!=='','prose is not identified as a native formula');
 ok(tf.kind===TextType.AREATEXT&&g.textFrames.length===1,'single editable area text');
 ok(g.placedItems.length===4,'four linked formulas');
 var wide=tf.lines.length;tf.textPath.width=170;l2aFlowLayout(tf,true);

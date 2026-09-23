@@ -91,7 +91,41 @@ function l2aFlowRemember(tf){
     var signature=l2aFlowSignature(tf);
     l2aFlowTag(tf,'LaTeX2AIFlowSignature',signature);
     l2aFlowTag(tf,'L2AFlowGeometry',l2aFlowSnapshot(tf).toXMLString());
+    if(l2aFlowTag(tf,'L2AFlowLeadingMode')!=='native')
+        l2aFlowTag(tf,'L2AFlowLeadingState',l2aFlowLeadingState(tf));
     $.global.l2aFlowCache[tf.uuid]={done:signature};
+}
+function l2aFlowLeadingState(tf){
+    var state=new XML('<leading/>'),values=[];
+    state.@text=tf.contents;
+    for(var i=0;i<tf.characters.length;i++){
+        var c=tf.characters[i],a=c.characterAttributes;
+        values.push([a.size,a.leading,a.autoLeading?1:0,c.paragraphAttributes.autoLeadingAmount].join(','));
+    }
+    state.@values=values.join(';');return state.toXMLString();
+}
+function l2aFlowLeadingChanged(tf){
+    if(l2aFlowTag(tf,'L2AFlowLeadingMode')==='native')return false;
+    var stored=l2aFlowTag(tf,'L2AFlowLeadingState');if(!stored)return false;
+    var state=new XML(stored),oldText=String(state.@text),text=tf.contents,old=String(state.@values).split(';');
+    // Match unchanged text on either side of a typing/deletion operation.
+    // Inherited formatting on newly inserted characters is not a user override.
+    var prefix=0,suffix=0,i;
+    while(prefix<Math.min(oldText.length,text.length)&&oldText.charAt(prefix)===text.charAt(prefix))prefix++;
+    while(suffix<Math.min(oldText.length,text.length)-prefix&&oldText.charAt(oldText.length-1-suffix)===text.charAt(text.length-1-suffix))suffix++;
+    function changed(current,previous){
+        if(!old[previous]||current>=tf.characters.length)return false;
+        var before=old[previous].split(','),c=tf.characters[current],a=c.characterAttributes;
+        if((a.autoLeading?1:0)!==Number(before[2]))return true;
+        if(Math.abs(c.paragraphAttributes.autoLeadingAmount-Number(before[3]))>0.01)return true;
+        // Illustrator can scale leading with type size. A font-size change is
+        // not itself an explicit line-spacing edit; whole-group transforms are
+        // already handled before this check.
+        return !a.autoLeading&&Math.abs(a.size-Number(before[0]))<0.01&&Math.abs(a.leading-Number(before[1]))>0.01;
+    }
+    for(i=0;i<prefix;i++)if(changed(i,i))return true;
+    for(i=0;i<suffix;i++)if(changed(text.length-1-i,oldText.length-1-i))return true;
+    return false;
 }
 function l2aFlowLocalHeight(tf){
     var m=l2aFlowLinear(tf.matrix),inv=app.invertMatrix(m);
@@ -120,11 +154,11 @@ function l2aFlowSignature(tf) {
     for(i=0;i<tf.textPath.pathPoints.length;i++){var point=tf.textPath.pathPoints[i].anchor;out.push(point[0],point[1]);}
     for (i = 0; i < tf.characters.length; i++) {
         a = tf.characters[i].characterAttributes;
-        out.push(a.size, a.textFont.name, a.horizontalScale, a.verticalScale, a.tracking, a.baselineShift, a.leading, a.fillColor.typename);
+        out.push(a.size, a.textFont.name, a.horizontalScale, a.verticalScale, a.tracking, a.baselineShift, a.leading, a.fillColor.typename, a.autoLeading);
     }
     for (i = 0; i < tf.paragraphs.length; i++) {
         a = tf.paragraphs[i].paragraphAttributes;
-        out.push(a.justification, a.leftIndent, a.rightIndent, a.firstLineIndent, a.spaceBefore, a.spaceAfter);
+        out.push(a.justification, a.leftIndent, a.rightIndent, a.firstLineIndent, a.spaceBefore, a.spaceAfter, a.autoLeadingAmount);
     }
     // Illustrator rounds character attributes when serializing an AI file.
     // Ignore sub-millipoint drift instead of rewriting unchanged reopened art.
@@ -133,6 +167,11 @@ function l2aFlowSignature(tf) {
 }
 function l2aFlowLayout(tf, force, initialFit) {
     var data=l2aFlowMetadata(tf);if(!data)return false;
+    // Establish a baseline for existing documents without rewriting their
+    // typography merely because this version adds line-spacing tracking.
+    if(!force&&!l2aFlowTag(tf,'L2AFlowLeadingState')&&l2aFlowTag(tf,'L2AFlowLeadingMode')!=='native'){
+        l2aFlowRemember(tf);return false;
+    }
     var geometry=l2aFlowTag(tf,'L2AFlowGeometry');
     if(!geometry&&!force){l2aFlowTag(tf,'L2AFlowHeight',String(l2aFlowLocalHeight(tf)));l2aFlowRemember(tf);return false;}
     var key = tf.uuid, signature = l2aFlowSignature(tf), cache = $.global.l2aFlowCache[key];
@@ -150,12 +189,13 @@ function l2aFlowLayout(tf, force, initialFit) {
     var wholeTransform=!force && geometry && l2aFlowWholeTransform(tf,new XML(geometry));
     var lastHeight=Number(l2aFlowTag(tf,'L2AFlowHeight')),height=l2aFlowLocalHeight(tf);
     if(wholeTransform){l2aFlowTag(tf,'L2AFlowHeight',String(height));l2aFlowRemember(tf);return true;}
+    if(l2aFlowLeadingChanged(tf))l2aFlowTag(tf,'L2AFlowLeadingMode','native');
     if(!wholeTransform&&!initialFit&&lastHeight&&Math.abs(height-lastHeight)>0.1)l2aFlowTag(tf,'L2AFlowManualHeight','1');
-    l2aFlowLayoutLocal(tf,!wholeTransform&&(initialFit||l2aFlowTag(tf,'L2AFlowManualHeight')!=='1'));
+    l2aFlowLayoutLocal(tf,!wholeTransform&&(initialFit||l2aFlowTag(tf,'L2AFlowManualHeight')!=='1'),l2aFlowTag(tf,'L2AFlowLeadingMode')!=='native');
     l2aFlowTag(tf,'L2AFlowHeight',String(l2aFlowLocalHeight(tf)));
     l2aFlowRemember(tf);return true;
 }
-function l2aFlowLayoutLocal(tf,autoHeight) {
+function l2aFlowLayoutLocal(tf,autoHeight,managedLeading) {
     var meta=new XML(l2aFlowMetadata(tf)),group=tf.parent,doc=app.activeDocument;
     var frame=l2aFlowFrame(tf),orientation=frame.matrix;
     var measure = null, outline = null, duplicate = null, i, j;
@@ -217,7 +257,7 @@ function l2aFlowLayoutLocal(tf,autoHeight) {
             attr.horizontalScale = Math.max(1, (w * scaleX + 1) / (ref.w * size / 100) * 100);
             attr.verticalScale = 100; attr.tracking = 0;
             attr.fillColor = noColor; attr.strokeColor = noColor;
-            attr.autoLeading = false; attr.leading = Math.max(size * 1.35, (h + d) * scale + size * 0.25);
+            if(managedLeading){attr.autoLeading=false;attr.leading=Math.max(size*1.35,(h+d)*scale+size*0.25);}
             entry.index = i; entry.scale = scaleY;entry.scaleX=scaleX; entry.ref = ref; entry.size = size; entry.hs = attr.horizontalScale;
             entry.art.hidden = false; found[slot] = entry;
         }
@@ -225,8 +265,10 @@ function l2aFlowLayoutLocal(tf,autoHeight) {
         // Leading belongs to the incoming line. Reserve the previous formula's
         // descent as well, so a tall fraction cannot collide with the next line.
         // Derive it from type size each time, including after a font-size edit.
-        tf.textRange.characterAttributes.autoLeading = true;
-        tf.textRange.paragraphAttributes.autoLeadingAmount = 135;
+        if(managedLeading){
+            tf.textRange.characterAttributes.autoLeading=true;
+            tf.textRange.paragraphAttributes.autoLeadingAmount=135;
+        }
         // Grow area text when narrower wrapping or larger type would overset.
         for (i = 0; autoHeight && i < 8; i++) {
             var lines = tf.lines;
@@ -235,7 +277,7 @@ function l2aFlowLayoutLocal(tf,autoHeight) {
             l2aFlowSetHeight(tf,Math.min(12000, Math.max(100, l2aFlowLocalHeight(tf) * 1.7)));
         }
         var previousDepth = 0;
-        for (i=0;i<tf.lines.length;i++) {
+        for (i=0;managedLeading && i<tf.lines.length;i++) {
             var line=tf.lines[i], ascent=0, depth=0, sizeMax=0;
             for(j=0;j<line.characters.length;j++) {
                 var lc=line.characters[j], ls=lc.characterAttributes.size;

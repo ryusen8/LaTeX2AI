@@ -12,6 +12,7 @@ $script=[IO.File]::ReadAllText((Join-Path $folder 'insert.jsx')).Replace($folder
 $line=$script.Substring(0,$script.IndexOf("`n"))
 $checks=[IO.File]::ReadAllText((Join-Path $PSScriptRoot 'FlowHostAssertions.jsx'))
 $transformChecks=[IO.File]::ReadAllText((Join-Path $PSScriptRoot 'FlowTransformAssertions.jsx'))
+$leadingChecks=[IO.File]::ReadAllText((Join-Path $PSScriptRoot 'FlowLeadingAssertions.jsx'))
 $app=[Runtime.InteropServices.Marshal]::GetActiveObject('Illustrator.Application')
 foreach($color in @('RGB','CMYK')) {
     $setup=$line+'var template=app.open(new File('+[L2A.UTIL.EditableParagraph]::Quote((Resolve-Path $NativeTemplate).Path.Replace('\','/'))+'));'+@'
@@ -28,5 +29,6 @@ src.copy(target.fsName);p.relink(target);p.note='%L2A-EDITABLE-JOB:'+job.id;p.po
         Write-Output "$color $result"
         Write-Output $app.DoJavaScript($checks)
         Write-Output $app.DoJavaScript($transformChecks)
+        Write-Output $app.DoJavaScript($leadingChecks)
     } finally { $app.DoJavaScript('app.activeDocument.close(SaveOptions.DONOTSAVECHANGES);')|Out-Null }
 }

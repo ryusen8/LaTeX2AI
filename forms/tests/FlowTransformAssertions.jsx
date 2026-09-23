@@ -12,6 +12,7 @@ var shear=app.getIdentityMatrix();shear.mValueC=0.25;g.transform(shear);b=coords
 var m=tf.matrix;
 tf.characters[0].contents='Additional editable text. '+tf.characters[0].contents;poll();
 ok(Math.abs(tf.matrix.mValueB-m.mValueB)<0.001&&Math.abs(tf.matrix.mValueC-m.mValueC)<0.001,'editing after transform preserves text orientation');
+ok(l2aFlowTag(tf,'L2AFlowLeadingMode')!=='native','group transforms do not falsely enable manual leading');
 var a=g.placedItems[0].matrix;
 ok(Math.abs(a.mValueB/a.mValueA+tf.matrix.mValueB/tf.matrix.mValueA)<0.001,'reflowed formulas follow rotated baseline');
 var inv=l2aFlowLinear(tf.matrix);g.transform(app.invertMatrix(inv),true,true,true,true,100,Transformation.DOCUMENTORIGIN);poll();

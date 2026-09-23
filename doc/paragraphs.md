@@ -13,6 +13,12 @@ The Windows v0.0.10 compatibility build accepts prose containing `$inline math$`
    frame to change its type size, or use the native Paragraph panel for alignment.
 7. Resize the **area-text boundary** to change wrapping. Do not scale the outer
    group when you intend to change column width. Keep the group together.
+   If resize handles are missing, enable **View > Show Bounding Box**
+   (**Ctrl+Shift+B**) and use the Selection tool.
+8. To change line spacing, select the text with the Type tool and set **Leading**
+   in Illustrator's **Character** panel (**Ctrl+T**). Use a point value or Auto.
+   Select all characters in the frame (including the invisible formula anchors)
+   for uniform spacing; individual text ranges can retain different values.
 
 The output is one native area-text frame plus linked LaTeX2AI PDF formula objects.
 Illustrator composes lines and paragraph alignment. Invisible anchor characters
@@ -25,8 +31,13 @@ An individual formula wider than the column is proportionally reduced to fit.
 
 Formula size tracks the anchor's type size and matches the capital height of
 neighboring prose. The default prose font is Times New Roman; math keeps its TeX
-fonts. Tall formulas reserve space above and below the baseline. The helper
-manages line spacing. RGB and CMYK documents are supported.
+fonts. Initially the helper reserves space above and below tall formulas. Once
+you change leading, that frame uses Illustrator's native leading settings;
+the helper no longer writes line spacing. Fixed leading, Auto and the native
+auto-leading percentage are preserved through typing, width changes, font-size
+edits, transforms and save/reopen. Formulas follow the resulting baselines.
+Deliberately tight spacing is allowed, so tall formulas can overlap adjacent
+lines if the chosen value is too small. RGB and CMYK documents are supported.
 
 ## Editing and practical limits
 
@@ -100,3 +111,5 @@ native placement settings unavailable through scripting; the test never saves
 changes to it. Host tests cover RGB/CMYK layout, width, type size, alignment,
 anchor deletion/restoration and saved-document behavior, plus nonuniform scale,
 rotation, shear, editing after transforms, manual height and metadata migration.
+Leading tests also cover fixed and mixed values, tight spacing, native automatic
+leading, percentage changes, subsequent edits and persistence after reopening.
